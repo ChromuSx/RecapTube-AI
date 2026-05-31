@@ -1,0 +1,556 @@
+// content-main.js - RecapTube AI content script (ISOLATED world)
+//
+// Orchestrates: video detection (SPA navigation), transcript extraction (reused 3-layer
+// TranscriptService), native-chapter detection, the AI recap request to the background,
+// and rendering of the in-page panel + progress-bar chapter markers.
+import { TranscriptService } from '../shared/services/transcript-service.js';
+import { CONFIG } from '../shared/config.js';
+import {
+  SELECTORS,
+  CSS_CLASSES,
+  CHAPTER_MARKER_COLORS,
+  NOTIFICATION_TYPES,
+  STORAGE_KEYS,
+  INFO_MESSAGES,
+  ERROR_MESSAGES,
+  SUCCESS_MESSAGES
+} from '../shared/constants.js';
+import { logger } from '../shared/logger/index.js';
+
+class RecapManager {
+  constructor() {
+    this.logger = logger.child('RecapManager');
+    this.transcriptService = new TranscriptService();
+
+    this.currentVideoId = null;
+    this.isProcessing = false;
+    this.settings = { ...CONFIG.DEFAULTS.SETTINGS };
+    this.advancedSettings = { ...CONFIG.DEFAULTS.ADVANCED_SETTINGS };
+    this.lastRecap = null;
+
+    this.init();
+  }
+
+  async init() {
+    try {
+      this.injectStyles();
+      // Listen for MAIN-world interceptor transcripts as early as possible.
+      this.transcriptService.setupInterceptorBridge();
+      this.transcriptService.setNotifier((msg, type) => this.showToast(msg, type));
+
+      await this.loadSettings();
+      this.setupMessageListener();
+      this.observeNavigation();
+
+      this.logger.info('RecapTube content script ready');
+    } catch (error) {
+      this.logger.error('Init failed', { error: error.message });
+    }
+  }
+
+  // ---------------------------------------------------------------- settings
+  async loadSettings() {
+    try {
+      const data = await chrome.storage.local.get([STORAGE_KEYS.SETTINGS, STORAGE_KEYS.ADVANCED_SETTINGS]);
+      this.settings = { ...CONFIG.DEFAULTS.SETTINGS, ...(data[STORAGE_KEYS.SETTINGS] || {}) };
+      this.advancedSettings = { ...CONFIG.DEFAULTS.ADVANCED_SETTINGS, ...(data[STORAGE_KEYS.ADVANCED_SETTINGS] || {}) };
+    } catch (error) {
+      this.logger.warn('Could not load settings, using defaults', { error: error.message });
+    }
+  }
+
+  setupMessageListener() {
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      (async () => {
+        try {
+          switch (message.action) {
+            case 'updateSettings':
+            case 'updateAdvancedSettings':
+              await this.loadSettings();
+              sendResponse({ success: true });
+              break;
+            case 'manualRecap':
+              if (this.currentVideoId) {
+                this.processVideo(this.currentVideoId, { force: true });
+              }
+              sendResponse({ success: true });
+              break;
+            case 'getCurrentChannel':
+              sendResponse({ success: true, channel: this.getChannelInfo() });
+              break;
+            default:
+              sendResponse({ success: false, error: 'Unknown action' });
+          }
+        } catch (error) {
+          sendResponse({ success: false, error: error.message });
+        }
+      })();
+      return true;
+    });
+  }
+
+  // -------------------------------------------------------------- navigation
+  observeNavigation() {
+    // YouTube fires this on every SPA navigation.
+    window.addEventListener('yt-navigate-finish', () => this.onNavigate());
+    // Fallback: observe the body for the video id changing.
+    const observer = new MutationObserver(() => this.onNavigate());
+    observer.observe(document.body, { childList: true, subtree: true });
+    // Initial load.
+    this.onNavigate();
+  }
+
+  onNavigate() {
+    if (!this.isWatchPage()) {
+      this.cleanup();
+      this.currentVideoId = null;
+      return;
+    }
+    const videoId = this.getVideoId();
+    if (videoId && videoId !== this.currentVideoId) {
+      this.currentVideoId = videoId;
+      this.cleanup();
+      // Small delay so the player/metadata settle after navigation.
+      setTimeout(() => this.processVideo(videoId), CONFIG.VIDEO.INITIAL_LOAD_DELAY_MS);
+    }
+  }
+
+  isWatchPage() {
+    return location.pathname === '/watch' && !!this.getVideoId();
+  }
+
+  getVideoId() {
+    try {
+      return new URLSearchParams(location.search).get('v') || null;
+    } catch {
+      return null;
+    }
+  }
+
+  // ----------------------------------------------------------- main pipeline
+  async processVideo(videoId, { force = false } = {}) {
+    if (this.isProcessing) return;
+    if (!this.settings.enabled) return;
+    if (videoId !== this.getVideoId()) return; // navigated away during the delay
+
+    // Channel whitelist
+    if (this.isWhitelisted()) {
+      this.showToast(INFO_MESSAGES.CHANNEL_WHITELISTED, NOTIFICATION_TYPES.INFO);
+      return;
+    }
+
+    this.isProcessing = true;
+    try {
+      const hasNative = this.hasNativeChapters();
+      const needChapters = this.settings.generateChapters && !hasNative;
+      if (hasNative) this.logger.info(INFO_MESSAGES.NATIVE_CHAPTERS);
+
+      if (this.settings.autoOpenPanel || force) {
+        this.renderPanel({ state: 'loading', hasNative });
+      }
+
+      // Extract transcript (interceptor -> DOM -> AI self-heal, all reused).
+      const channel = this.getChannelInfo();
+      let transcript;
+      try {
+        transcript = await this.transcriptService.extractFromDOM(videoId, channel.id || '');
+      } catch (err) {
+        this.logger.warn('Transcript extraction failed', { error: err.message });
+        this.renderPanel({ state: 'error', message: ERROR_MESSAGES.NO_TRANSCRIPT, hasNative });
+        return;
+      }
+
+      if (!transcript || !transcript.segments || transcript.segments.length === 0) {
+        this.renderPanel({ state: 'error', message: ERROR_MESSAGES.NO_TRANSCRIPT, hasNative });
+        return;
+      }
+
+      this.showToast(
+        INFO_MESSAGES.TRANSCRIPT_LOADING.replace('{count}', transcript.segments.length),
+        NOTIFICATION_TYPES.INFO
+      );
+
+      const lang = this.resolveLang();
+      const durationSec = this.getDurationSec();
+      const title = this.getTitle();
+
+      const response = await this.sendMessage({
+        action: 'generateRecap',
+        data: {
+          videoId,
+          segments: transcript.segments,
+          title,
+          durationSec,
+          needChapters,
+          summaryLength: this.settings.summaryLength,
+          lang,
+          force
+        }
+      });
+
+      if (videoId !== this.getVideoId()) return; // navigated away while waiting
+
+      if (!response || !response.success) {
+        const msg = response && response.error ? response.error : ERROR_MESSAGES.RECAP_ERROR;
+        this.renderPanel({ state: 'error', message: msg, hasNative });
+        return;
+      }
+
+      this.lastRecap = response.recap;
+      this.renderPanel({ state: 'ready', recap: response.recap, hasNative });
+
+      const chapterCount = (response.recap.chapters || []).length;
+      if (needChapters && chapterCount > 0 && this.settings.showProgressMarkers) {
+        this.drawChapterMarkers(response.recap.chapters, durationSec);
+      }
+
+      this.showToast(
+        chapterCount > 0
+          ? SUCCESS_MESSAGES.RECAP_READY.replace('{count}', chapterCount)
+          : SUCCESS_MESSAGES.RECAP_READY_NO_CHAPTERS,
+        NOTIFICATION_TYPES.SUCCESS
+      );
+    } catch (error) {
+      this.logger.error('processVideo failed', { error: error.message });
+      this.renderPanel({ state: 'error', message: ERROR_MESSAGES.RECAP_ERROR });
+    } finally {
+      this.isProcessing = false;
+    }
+  }
+
+  resolveLang() {
+    const setting = this.settings.outputLanguage;
+    if (!setting || setting === 'auto') {
+      return navigator.language || 'en';
+    }
+    return setting;
+  }
+
+  // --------------------------------------------------------- native chapters
+  hasNativeChapters() {
+    try {
+      const ticks = document.querySelectorAll(SELECTORS.PLAYER_CHAPTERS);
+      if (ticks && ticks.length >= 2) return true;
+      const panel = document.querySelector(SELECTORS.NATIVE_CHAPTERS_PANEL);
+      if (panel && panel.querySelector(SELECTORS.NATIVE_CHAPTER_ITEM)) return true;
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  // ----------------------------------------------------------- page metadata
+  getChannelInfo() {
+    try {
+      const a =
+        document.querySelector('ytd-video-owner-renderer ytd-channel-name a') ||
+        document.querySelector(SELECTORS.CHANNEL_NAME) ||
+        document.querySelector('#channel-name a');
+      if (!a) return { name: '', handle: '', id: '' };
+      const href = a.getAttribute('href') || '';
+      let handle = '';
+      let id = '';
+      if (href.includes('/@')) handle = '@' + href.split('/@')[1].split('/')[0];
+      if (href.includes('/channel/')) id = href.split('/channel/')[1].split('/')[0];
+      return { name: (a.textContent || '').trim(), handle, id };
+    } catch {
+      return { name: '', handle: '', id: '' };
+    }
+  }
+
+  isWhitelisted() {
+    const list = this.advancedSettings.channelWhitelist || [];
+    if (!list.length) return false;
+    const { name, handle, id } = this.getChannelInfo();
+    const norm = (s) => (s || '').toLowerCase().trim();
+    const set = list.map(norm);
+    return [name, handle, id].some(v => v && set.includes(norm(v)));
+  }
+
+  getTitle() {
+    const el = document.querySelector(SELECTORS.VIDEO_TITLE) || document.querySelector('h1.ytd-watch-metadata');
+    return el ? (el.textContent || '').trim() : (document.title || '').replace(/ - YouTube$/, '');
+  }
+
+  getDurationSec() {
+    const v = document.querySelector(SELECTORS.VIDEO);
+    const d = v && v.duration;
+    return Number.isFinite(d) && d > 0 ? Math.floor(d) : 0;
+  }
+
+  // ------------------------------------------------------------------- panel
+  getPanelAnchor() {
+    for (const sel of SELECTORS.PANEL_ANCHORS) {
+      const el = document.querySelector(sel);
+      if (el) return el;
+    }
+    return null;
+  }
+
+  ensurePanel() {
+    let panel = document.querySelector('.' + CSS_CLASSES.PANEL);
+    if (panel) return panel;
+
+    const anchor = this.getPanelAnchor();
+    if (!anchor) return null;
+
+    panel = document.createElement('div');
+    panel.className = CSS_CLASSES.PANEL;
+    panel.innerHTML = `
+      <div class="rt-head">
+        <span class="rt-brand"><span class="rt-brand-mark">▶</span> RecapTube AI</span>
+        <span class="rt-lang"></span>
+        <span class="rt-head-actions">
+          <button class="rt-btn rt-regen" title="Regenerate">⟳</button>
+          <button class="rt-btn rt-toggle" title="Collapse">▾</button>
+        </span>
+      </div>
+      <div class="rt-body"></div>`;
+
+    // Insert at the very top of the sidebar / chosen anchor.
+    anchor.insertBefore(panel, anchor.firstChild);
+
+    panel.querySelector('.rt-toggle').addEventListener('click', () => {
+      panel.classList.toggle('rt-collapsed');
+      const t = panel.querySelector('.rt-toggle');
+      t.textContent = panel.classList.contains('rt-collapsed') ? '▸' : '▾';
+    });
+    panel.querySelector('.rt-regen').addEventListener('click', () => {
+      if (this.currentVideoId) this.processVideo(this.currentVideoId, { force: true });
+    });
+
+    return panel;
+  }
+
+  renderPanel({ state, recap, message, hasNative }) {
+    const panel = this.ensurePanel();
+    if (!panel) return;
+    const body = panel.querySelector('.rt-body');
+    const langEl = panel.querySelector('.rt-lang');
+
+    if (state === 'loading') {
+      body.innerHTML = `<div class="rt-loading"><span class="rt-spinner"></span> ${INFO_MESSAGES.GENERATING}</div>`;
+      return;
+    }
+
+    if (state === 'error') {
+      body.innerHTML = `<div class="rt-error">${this.escape(message || ERROR_MESSAGES.RECAP_ERROR)}</div>
+        <button class="rt-btn rt-retry">Retry</button>`;
+      body.querySelector('.rt-retry').addEventListener('click', () => {
+        if (this.currentVideoId) this.processVideo(this.currentVideoId, { force: true });
+      });
+      return;
+    }
+
+    // state === 'ready'
+    if (recap && recap.language) langEl.textContent = String(recap.language).toUpperCase();
+
+    const summaryHtml = recap && recap.summary
+      ? `<div class="rt-section">
+           <div class="rt-section-title">Summary</div>
+           <div class="rt-summary">${this.escape(recap.summary)}</div>
+           ${(recap.keyPoints && recap.keyPoints.length)
+             ? `<ul class="rt-keypoints">${recap.keyPoints.map(p => `<li>${this.escape(p)}</li>`).join('')}</ul>`
+             : ''}
+         </div>`
+      : '';
+
+    let chaptersHtml = '';
+    const chapters = (recap && recap.chapters) || [];
+    if (chapters.length > 0) {
+      chaptersHtml = `<div class="rt-section">
+          <div class="rt-section-title">Chapters <span class="rt-badge-ai">AI</span></div>
+          <div class="rt-chapters">${chapters.map((c, i) => this.chapterRow(c, i)).join('')}</div>
+        </div>`;
+    } else if (hasNative) {
+      chaptersHtml = `<div class="rt-section">
+          <div class="rt-section-title">Chapters</div>
+          <div class="rt-note">📑 This video already has chapters from the creator.</div>
+        </div>`;
+    }
+
+    body.innerHTML = summaryHtml + chaptersHtml;
+
+    // Wire chapter clicks (seek).
+    body.querySelectorAll('.rt-chapter').forEach(row => {
+      row.addEventListener('click', () => this.seekTo(Number(row.dataset.start)));
+    });
+  }
+
+  chapterRow(c, i) {
+    const color = CHAPTER_MARKER_COLORS[i % CHAPTER_MARKER_COLORS.length];
+    return `<div class="rt-chapter" data-start="${c.start}" title="Jump to ${this.formatTime(c.start)}">
+        <span class="rt-dot" style="background:${color}"></span>
+        <span class="rt-time">${this.formatTime(c.start)}</span>
+        <span class="rt-ch-title">${this.escape(c.title)}</span>
+      </div>`;
+  }
+
+  // ---------------------------------------------------- progress-bar markers
+  drawChapterMarkers(chapters, durationSec) {
+    this.clearMarkers();
+    const duration = durationSec || this.getDurationSec();
+    if (!duration) return;
+    const bar = document.querySelector(SELECTORS.PROGRESS_BAR);
+    if (!bar) {
+      // Player not ready yet; retry shortly.
+      setTimeout(() => {
+        if (this.currentVideoId) this.drawChapterMarkers(chapters, duration);
+      }, 1500);
+      return;
+    }
+
+    chapters.forEach((c, i) => {
+      const left = Math.min(100, Math.max(0, (c.start / duration) * 100));
+      const color = CHAPTER_MARKER_COLORS[i % CHAPTER_MARKER_COLORS.length];
+      const marker = document.createElement('div');
+      marker.className = CSS_CLASSES.CHAPTER_MARKER;
+      marker.style.cssText =
+        `position:absolute;left:${left}%;top:0;width:3px;height:100%;` +
+        `background:${color};opacity:${CONFIG.UI.MARKER_OPACITY};z-index:30;cursor:pointer;` +
+        `transform:translateX(-50%);transition:opacity .15s,height .15s;`;
+      marker.title = `${this.formatTime(c.start)} — ${c.title}`;
+      marker.addEventListener('mouseenter', () => { marker.style.opacity = CONFIG.UI.MARKER_HOVER_OPACITY; });
+      marker.addEventListener('mouseleave', () => { marker.style.opacity = CONFIG.UI.MARKER_OPACITY; });
+      marker.addEventListener('click', (e) => { e.stopPropagation(); this.seekTo(c.start); });
+      bar.appendChild(marker);
+    });
+  }
+
+  clearMarkers() {
+    document.querySelectorAll('.' + CSS_CLASSES.CHAPTER_MARKER).forEach(m => m.remove());
+  }
+
+  seekTo(seconds) {
+    const v = document.querySelector(SELECTORS.VIDEO);
+    if (v && Number.isFinite(seconds)) {
+      v.currentTime = seconds;
+      if (v.paused && typeof v.play === 'function') v.play().catch(() => {});
+    }
+  }
+
+  // --------------------------------------------------------------- teardown
+  cleanup() {
+    document.querySelectorAll('.' + CSS_CLASSES.PANEL).forEach(p => p.remove());
+    this.clearMarkers();
+    document.querySelectorAll('.' + CSS_CLASSES.TOOLTIP).forEach(t => t.remove());
+    this.lastRecap = null;
+  }
+
+  // --------------------------------------------------------------- messaging
+  sendMessage(message) {
+    return new Promise((resolve) => {
+      try {
+        chrome.runtime.sendMessage(message, (response) => {
+          if (chrome.runtime.lastError) {
+            resolve({ success: false, error: chrome.runtime.lastError.message });
+          } else {
+            resolve(response);
+          }
+        });
+      } catch (error) {
+        resolve({ success: false, error: error.message });
+      }
+    });
+  }
+
+  // ------------------------------------------------------------------ toasts
+  showToast(message, type = NOTIFICATION_TYPES.INFO) {
+    try {
+      const toast = document.createElement('div');
+      toast.className = CSS_CLASSES.NOTIFICATION + ' rt-' + type;
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+      }, CONFIG.UI.TOAST_DURATION_MS);
+    } catch {
+      /* noop */
+    }
+  }
+
+  // -------------------------------------------------------------- utilities
+  formatTime(s) {
+    s = Math.max(0, Math.floor(Number(s) || 0));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    const pad = (n) => String(n).padStart(2, '0');
+    return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
+  }
+
+  escape(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // ----------------------------------------------------------------- styles
+  injectStyles() {
+    if (document.getElementById(CSS_CLASSES.STYLE_TAG)) return;
+    const style = document.createElement('style');
+    style.id = CSS_CLASSES.STYLE_TAG;
+    style.textContent = `
+.${CSS_CLASSES.PANEL}{
+  font-family:"Roboto","Segoe UI",Arial,sans-serif;
+  background:#fff;color:#0f0f0f;border:1px solid #e5e5e5;border-radius:12px;
+  margin:0 0 16px 0;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);
+}
+html[dark] .${CSS_CLASSES.PANEL}{background:#212121;color:#f1f1f1;border-color:#3a3a3a;}
+.${CSS_CLASSES.PANEL} .rt-head{
+  display:flex;align-items:center;gap:8px;padding:10px 12px;
+  border-bottom:1px solid #ececec;background:#fafafa;
+}
+html[dark] .${CSS_CLASSES.PANEL} .rt-head{background:#181818;border-color:#333;}
+.${CSS_CLASSES.PANEL} .rt-brand{font-weight:600;font-size:14px;display:flex;align-items:center;gap:6px;}
+.${CSS_CLASSES.PANEL} .rt-brand-mark{color:#ff0033;}
+.${CSS_CLASSES.PANEL} .rt-lang{margin-left:auto;font-size:11px;opacity:.6;letter-spacing:.04em;}
+.${CSS_CLASSES.PANEL} .rt-head-actions{display:flex;gap:4px;}
+.${CSS_CLASSES.PANEL} .rt-btn{
+  cursor:pointer;border:none;background:transparent;color:inherit;font-size:14px;
+  border-radius:6px;padding:4px 8px;line-height:1;
+}
+.${CSS_CLASSES.PANEL} .rt-btn:hover{background:rgba(127,127,127,.18);}
+.${CSS_CLASSES.PANEL} .rt-body{padding:12px;max-height:60vh;overflow-y:auto;font-size:13px;line-height:1.5;}
+.${CSS_CLASSES.PANEL}.rt-collapsed .rt-body{display:none;}
+.${CSS_CLASSES.PANEL} .rt-section + .rt-section{margin-top:14px;}
+.${CSS_CLASSES.PANEL} .rt-section-title{font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.05em;opacity:.7;margin-bottom:6px;display:flex;align-items:center;gap:6px;}
+.${CSS_CLASSES.PANEL} .rt-badge-ai{background:#3ea6ff;color:#fff;font-size:9px;padding:1px 5px;border-radius:8px;letter-spacing:.05em;}
+.${CSS_CLASSES.PANEL} .rt-summary{white-space:pre-wrap;}
+.${CSS_CLASSES.PANEL} .rt-keypoints{margin:8px 0 0;padding-left:18px;}
+.${CSS_CLASSES.PANEL} .rt-keypoints li{margin:3px 0;}
+.${CSS_CLASSES.PANEL} .rt-note{opacity:.75;font-style:italic;}
+.${CSS_CLASSES.PANEL} .rt-chapter{
+  display:flex;align-items:baseline;gap:8px;padding:5px 6px;border-radius:8px;cursor:pointer;
+}
+.${CSS_CLASSES.PANEL} .rt-chapter:hover{background:rgba(127,127,127,.14);}
+.${CSS_CLASSES.PANEL} .rt-dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;align-self:center;}
+.${CSS_CLASSES.PANEL} .rt-time{font-variant-numeric:tabular-nums;color:#3ea6ff;font-size:12px;flex:0 0 auto;}
+.${CSS_CLASSES.PANEL} .rt-ch-title{flex:1;}
+.${CSS_CLASSES.PANEL} .rt-loading{display:flex;align-items:center;gap:10px;opacity:.85;padding:6px 0;}
+.${CSS_CLASSES.PANEL} .rt-spinner{width:16px;height:16px;border:2px solid rgba(127,127,127,.3);border-top-color:#3ea6ff;border-radius:50%;animation:rt-spin .8s linear infinite;}
+.${CSS_CLASSES.PANEL} .rt-error{color:#e74c3c;margin-bottom:8px;}
+.${CSS_CLASSES.PANEL} .rt-retry{border:1px solid #3ea6ff;color:#3ea6ff;border-radius:8px;padding:5px 12px;background:transparent;cursor:pointer;}
+@keyframes rt-spin{to{transform:rotate(360deg);}}
+.${CSS_CLASSES.NOTIFICATION}{
+  position:fixed;top:70px;right:20px;z-index:100000;max-width:340px;
+  padding:11px 15px;border-radius:10px;color:#fff;font-family:"Roboto",Arial,sans-serif;font-size:13px;
+  box-shadow:0 4px 16px rgba(0,0,0,.25);transition:opacity .3s;
+}
+.${CSS_CLASSES.NOTIFICATION}.rt-info{background:#3ea6ff;}
+.${CSS_CLASSES.NOTIFICATION}.rt-success{background:#27ae60;}
+.${CSS_CLASSES.NOTIFICATION}.rt-warning{background:#f39c12;}
+.${CSS_CLASSES.NOTIFICATION}.rt-error{background:#e74c3c;}
+`;
+    (document.head || document.documentElement).appendChild(style);
+  }
+}
+
+// Boot
+if (typeof window !== 'undefined') {
+  // eslint-disable-next-line no-new
+  new RecapManager();
+}

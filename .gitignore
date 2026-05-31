@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+.env
+*.zip
+screenshots/
+.claude/
+build-info.json
+*.tsbuildinfo
+.vscode/
+*.swp
+package-lock.json

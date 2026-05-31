@@ -1,0 +1,40 @@
+{
+  "name": "recaptube-ai",
+  "version": "1.0.0",
+  "description": "AI summary, translation and auto-generated chapters for YouTube videos",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "npm run build:content && npm run build:background && npm run build:popup",
+    "build:content": "rollup -c rollup.config.content.js",
+    "build:background": "rollup -c rollup.config.background.js",
+    "build:popup": "rollup -c rollup.config.popup.js",
+    "watch": "npm run build -- --watch",
+    "clean": "rimraf dist",
+    "dev": "npm run build -- --watch",
+    "type-check": "tsc --noEmit",
+    "generate-icons": "node generate-icons.js"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^25.0.7",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-terser": "^0.4.4",
+    "@rollup/plugin-typescript": "^11.1.6",
+    "@types/chrome": "^0.0.268",
+    "rimraf": "^5.0.7",
+    "rollup": "^4.18.0",
+    "rollup-plugin-copy": "^3.5.0",
+    "sharp": "^0.34.4",
+    "typescript": "^5.4.5"
+  },
+  "keywords": [
+    "youtube",
+    "ai",
+    "chrome-extension",
+    "summary",
+    "chapters",
+    "translation"
+  ],
+  "author": "",
+  "license": "MIT"
+}
