@@ -85,7 +85,9 @@ export const NOTIFICATION_COLORS = {
 // CSS class names (rt- prefix, distinct from SkipTube's yss-)
 export const CSS_CLASSES = {
   PANEL: 'rt-panel',
-  CHAPTER_MARKER: 'rt-chapter-marker',
+  CHAPTER_MARKER: 'rt-chapter-marker', // legacy thin marker (kept for cleanup)
+  CHAPTER_TRACK: 'rt-chapter-track',   // overlay container on the progress bar
+  CHAPTER_SEG: 'rt-chapter-seg',       // one chapter band inside the track
   TOOLTIP: 'rt-tooltip',
   NOTIFICATION: 'rt-notification',
   STYLE_TAG: 'rt-styles'

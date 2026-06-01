@@ -386,39 +386,138 @@ class RecapManager {
       </div>`;
   }
 
-  // ---------------------------------------------------- progress-bar markers
+  // ---------------------------------------------------- progress-bar segments
+  // Draw real chapter segments on the progress bar (YouTube-native style): one
+  // colored band per chapter, separated by small gaps. The overlay does NOT
+  // capture pointer events, so native scrubbing/seeking keeps working; we read
+  // the cursor position to show a per-chapter tooltip and to seek on click.
   drawChapterMarkers(chapters, durationSec) {
     this.clearMarkers();
     const duration = durationSec || this.getDurationSec();
-    if (!duration) return;
+    if (!duration || !chapters || chapters.length === 0) return;
+
     const bar = document.querySelector(SELECTORS.PROGRESS_BAR);
     if (!bar) {
-      // Player not ready yet; retry shortly.
-      setTimeout(() => {
-        if (this.currentVideoId) this.drawChapterMarkers(chapters, duration);
-      }, 1500);
+      // Player not ready yet; retry shortly (cap retries so we don't loop forever).
+      this._markerRetries = (this._markerRetries || 0) + 1;
+      if (this._markerRetries <= 8) {
+        setTimeout(() => {
+          if (this.currentVideoId) this.drawChapterMarkers(chapters, duration);
+        }, 1200);
+      }
       return;
     }
+    this._markerRetries = 0;
 
-    chapters.forEach((c, i) => {
-      const left = Math.min(100, Math.max(0, (c.start / duration) * 100));
-      const color = CHAPTER_MARKER_COLORS[i % CHAPTER_MARKER_COLORS.length];
-      const marker = document.createElement('div');
-      marker.className = CSS_CLASSES.CHAPTER_MARKER;
-      marker.style.cssText =
-        `position:absolute;left:${left}%;top:0;width:3px;height:100%;` +
-        `background:${color};opacity:${CONFIG.UI.MARKER_OPACITY};z-index:30;cursor:pointer;` +
-        `transform:translateX(-50%);transition:opacity .15s,height .15s;`;
-      marker.title = `${this.formatTime(c.start)} — ${c.title}`;
-      marker.addEventListener('mouseenter', () => { marker.style.opacity = CONFIG.UI.MARKER_HOVER_OPACITY; });
-      marker.addEventListener('mouseleave', () => { marker.style.opacity = CONFIG.UI.MARKER_OPACITY; });
-      marker.addEventListener('click', (e) => { e.stopPropagation(); this.seekTo(c.start); });
-      bar.appendChild(marker);
+    // Build [start, end) ranges from chapter starts, clamped to the duration.
+    const ranges = chapters
+      .map((c, i) => ({
+        start: Math.min(duration, Math.max(0, Number(c.start) || 0)),
+        end: i + 1 < chapters.length ? Math.min(duration, Number(chapters[i + 1].start) || duration) : duration,
+        title: c.title,
+        color: CHAPTER_MARKER_COLORS[i % CHAPTER_MARKER_COLORS.length]
+      }))
+      .filter(r => r.end > r.start);
+
+    const track = document.createElement('div');
+    track.className = CSS_CLASSES.CHAPTER_TRACK;
+    // Overlay exactly over the progress bar; transparent to pointer events.
+    track.style.cssText =
+      'position:absolute;left:0;top:0;width:100%;height:100%;z-index:32;pointer-events:none;';
+
+    ranges.forEach((r) => {
+      const leftPct = (r.start / duration) * 100;
+      const widthPct = ((r.end - r.start) / duration) * 100;
+      const seg = document.createElement('div');
+      seg.className = CSS_CLASSES.CHAPTER_SEG;
+      seg.style.cssText =
+        `position:absolute;left:${leftPct}%;width:${widthPct}%;top:0;height:100%;` +
+        `--rt-seg-color:${r.color};`;
+      seg.dataset.start = String(r.start);
+      seg.dataset.title = r.title || '';
+      track.appendChild(seg);
     });
+
+    bar.appendChild(track);
+    this._chapterRanges = ranges;
+    this._chapterTrack = track;
+    this.attachProgressBarInteractions(bar, duration);
+  }
+
+  // Hover tooltip + click-to-seek, computed from cursor X over the progress bar.
+  // Listeners live on the bar itself (which already receives pointer events).
+  attachProgressBarInteractions(bar, duration) {
+    this.detachProgressBarInteractions();
+    const tooltip = document.createElement('div');
+    tooltip.className = CSS_CLASSES.TOOLTIP;
+    tooltip.style.display = 'none';
+    document.body.appendChild(tooltip);
+    this._chapterTooltip = tooltip;
+
+    const ratioAt = (clientX) => {
+      const rect = bar.getBoundingClientRect();
+      if (rect.width <= 0) return 0;
+      return Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    };
+    const chapterAt = (sec) => {
+      const ranges = this._chapterRanges || [];
+      return ranges.find(r => sec >= r.start && sec < r.end) || ranges[ranges.length - 1] || null;
+    };
+
+    const onMove = (e) => {
+      const ranges = this._chapterRanges || [];
+      if (!ranges.length) return;
+      const sec = ratioAt(e.clientX) * duration;
+      const ch = chapterAt(sec);
+      if (!ch) { tooltip.style.display = 'none'; return; }
+      // Lift the hovered segment.
+      if (this._chapterTrack) {
+        this._chapterTrack.querySelectorAll('.' + CSS_CLASSES.CHAPTER_SEG).forEach((s) => {
+          s.classList.toggle('rt-seg-hover', Number(s.dataset.start) === ch.start);
+        });
+      }
+      tooltip.textContent = ch.title || '';
+      if (ch.title) {
+        tooltip.style.display = 'block';
+        tooltip.style.left = e.clientX + 'px';
+        const barRect = bar.getBoundingClientRect();
+        tooltip.style.top = (barRect.top - 34) + 'px';
+      } else {
+        tooltip.style.display = 'none';
+      }
+    };
+    const onLeave = () => {
+      tooltip.style.display = 'none';
+      if (this._chapterTrack) {
+        this._chapterTrack.querySelectorAll('.rt-seg-hover').forEach((s) => s.classList.remove('rt-seg-hover'));
+      }
+    };
+
+    bar.addEventListener('mousemove', onMove);
+    bar.addEventListener('mouseleave', onLeave);
+    this._barListeners = { bar, onMove, onLeave };
+  }
+
+  detachProgressBarInteractions() {
+    if (this._barListeners) {
+      const { bar, onMove, onLeave } = this._barListeners;
+      bar.removeEventListener('mousemove', onMove);
+      bar.removeEventListener('mouseleave', onLeave);
+      this._barListeners = null;
+    }
+    if (this._chapterTooltip) {
+      this._chapterTooltip.remove();
+      this._chapterTooltip = null;
+    }
   }
 
   clearMarkers() {
+    this.detachProgressBarInteractions();
     document.querySelectorAll('.' + CSS_CLASSES.CHAPTER_MARKER).forEach(m => m.remove());
+    document.querySelectorAll('.' + CSS_CLASSES.CHAPTER_TRACK).forEach(t => t.remove());
+    document.querySelectorAll('.' + CSS_CLASSES.TOOLTIP).forEach(t => t.remove());
+    this._chapterRanges = null;
+    this._chapterTrack = null;
   }
 
   seekTo(seconds) {
@@ -544,6 +643,26 @@ html[dark] .${CSS_CLASSES.PANEL} .rt-head{background:#181818;border-color:#333;}
 .${CSS_CLASSES.NOTIFICATION}.rt-success{background:#27ae60;}
 .${CSS_CLASSES.NOTIFICATION}.rt-warning{background:#f39c12;}
 .${CSS_CLASSES.NOTIFICATION}.rt-error{background:#e74c3c;}
+/* Chapter segments overlaid on the progress bar (YouTube-native feel) */
+.${CSS_CLASSES.CHAPTER_TRACK}{}
+.${CSS_CLASSES.CHAPTER_SEG}{
+  box-sizing:border-box;
+  background:var(--rt-seg-color,#3ea6ff);
+  opacity:.55;
+  border-right:2px solid rgba(0,0,0,.65);
+  transition:opacity .12s ease, transform .12s ease;
+  transform-origin:center bottom;
+}
+.${CSS_CLASSES.CHAPTER_SEG}:last-child{border-right:none;}
+.${CSS_CLASSES.CHAPTER_SEG}.rt-seg-hover{opacity:.9;transform:scaleY(1.7);}
+.${CSS_CLASSES.TOOLTIP}{
+  position:fixed;z-index:100001;pointer-events:none;
+  transform:translateX(-50%);
+  background:rgba(0,0,0,.88);color:#fff;
+  font-family:"Roboto",Arial,sans-serif;font-size:12px;font-weight:500;
+  padding:5px 9px;border-radius:6px;max-width:320px;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 8px rgba(0,0,0,.4);
+}
 `;
     (document.head || document.documentElement).appendChild(style);
   }
