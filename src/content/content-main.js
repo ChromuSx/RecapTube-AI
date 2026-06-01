@@ -367,9 +367,22 @@ class RecapManager {
           <div class="rt-section-title">Chapters</div>
           <div class="rt-note">📑 This video already has chapters from the creator.</div>
         </div>`;
+    } else {
+      // needChapters was true but the AI returned none (or all were invalid).
+      chaptersHtml = `<div class="rt-section">
+          <div class="rt-section-title">Chapters</div>
+          <div class="rt-note">No chapters were generated for this video. Try <button class="rt-btn rt-regen-inline" style="padding:2px 6px;border:1px solid currentColor;border-radius:6px;cursor:pointer;background:transparent;color:inherit;">regenerating</button>.</div>
+        </div>`;
     }
 
     body.innerHTML = summaryHtml + chaptersHtml;
+
+    const regenInline = body.querySelector('.rt-regen-inline');
+    if (regenInline) {
+      regenInline.addEventListener('click', () => {
+        if (this.currentVideoId) this.processVideo(this.currentVideoId, { force: true });
+      });
+    }
 
     // Wire chapter clicks (seek).
     body.querySelectorAll('.rt-chapter').forEach(row => {

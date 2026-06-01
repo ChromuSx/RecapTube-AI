@@ -60,13 +60,25 @@ export class RecapService {
       const response = await this.provider.sendRequest(payload);
       const parsed = this.provider.parseResponse(response) || {};
 
+      const rawChapterCount = Array.isArray(parsed.chapters) ? parsed.chapters.length : 0;
+      const normalizedChapters = needChapters ? this.normalizeChapters(parsed.chapters, durationSec) : [];
+
+      // Diagnostic: surfaces the case where the model returned chapters but they
+      // were all dropped (e.g. unexpected timestamp format) vs. returned none.
+      if (needChapters && rawChapterCount > 0 && normalizedChapters.length === 0) {
+        this.logger.warn('All AI chapters were dropped during normalization', {
+          rawChapterCount,
+          sample: JSON.stringify(parsed.chapters.slice(0, 3))
+        });
+      }
+
       const result = {
         language: typeof parsed.language === 'string' ? parsed.language : targetLanguage,
         summary: typeof parsed.summary === 'string' ? parsed.summary.trim() : '',
         keyPoints: Array.isArray(parsed.keyPoints)
           ? parsed.keyPoints.filter(p => typeof p === 'string' && p.trim()).map(p => p.trim())
           : [],
-        chapters: needChapters ? this.normalizeChapters(parsed.chapters, durationSec) : []
+        chapters: normalizedChapters
       };
 
       this.logger.info('Recap ready', {
@@ -91,7 +103,7 @@ export class RecapService {
     }[summaryLength] || '1-2 short paragraphs and 4-6 key points';
 
     const chaptersRule = needChapters
-      ? `- "chapters": an ordered list of topic chapters covering the whole video. Each chapter is { "start": <integer seconds>, "title": "<3-7 word title in ${targetLanguage}>" }. The first chapter MUST start at 0. Create a new chapter only when the topic clearly changes (aim for one every 1-5 minutes; typically 4-15 chapters total). Use the [Ns] timestamps from the transcript for "start".`
+      ? `- "chapters": an ordered list of topic chapters covering the whole video. Each chapter is { "start": <integer number of SECONDS, NOT a "mm:ss" string>, "title": "<3-7 word title in ${targetLanguage}>" }. "start" MUST be a plain integer like 0, 95, 240 — never a string, never "1:35". The first chapter MUST have "start": 0. Create a new chapter only when the topic clearly changes (aim for one every 1-5 minutes; typically 4-15 chapters total). Read the "start" values from the [Ns] timestamps in the transcript (N is already in seconds).`
       : `- "chapters": MUST be an empty array []. This video already has chapters, so do not generate any.`;
 
     return `You are an expert at summarizing YouTube videos from their transcript.
@@ -109,12 +121,12 @@ RULES:
 2. Output VALID JSON only — no markdown, no commentary outside the JSON.
 3. Keep chapter "start" values within the video length and strictly increasing.
 
-Output format:
+Output format (note "start" is an integer count of seconds):
 {
   "language": "<bcp-47>",
   "summary": "<text in ${targetLanguage}>",
   "keyPoints": ["<point 1>", "<point 2>"],
-  "chapters": [ { "start": 0, "title": "<title>" } ]
+  "chapters": [ { "start": 0, "title": "<title>" }, { "start": 142, "title": "<title>" } ]
 }`;
   }
 
@@ -124,18 +136,64 @@ Output format:
   }
 
   /**
-   * Validate, sort, clamp and dedupe AI chapters.
+   * Coerce a chapter "start" value to seconds. Accepts:
+   *   - a number (seconds)                      -> 137
+   *   - a numeric string "137"                  -> 137
+   *   - a clock string "2:17" / "1:02:17"       -> mm:ss / h:mm:ss
+   * Returns null when it cannot be parsed.
+   */
+  parseStartToSeconds(value) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return Math.max(0, Math.floor(value));
+    }
+    if (typeof value !== 'string') return null;
+    const s = value.trim();
+    if (s === '') return null;
+
+    // Plain number in a string ("137", "137.0")
+    if (/^\d+(\.\d+)?$/.test(s)) {
+      return Math.max(0, Math.floor(parseFloat(s)));
+    }
+    // Clock format mm:ss or h:mm:ss (also tolerate "1h02m03s"-free colon form)
+    if (/^\d{1,2}(:\d{1,2}){1,2}$/.test(s)) {
+      const parts = s.split(':').map(n => parseInt(n, 10));
+      if (parts.some(n => isNaN(n))) return null;
+      let secs = 0;
+      for (const p of parts) secs = secs * 60 + p;
+      return Math.max(0, secs);
+    }
+    return null;
+  }
+
+  /**
+   * Validate, sort, clamp and dedupe AI chapters. Tolerant of the many shapes
+   * models return: start may be seconds, a numeric string, or a "mm:ss" clock;
+   * the key may be start/startSeconds/time/timestamp/t and the label
+   * title/label/name/text.
    */
   normalizeChapters(rawChapters, durationSec) {
     if (!Array.isArray(rawChapters)) return [];
     const max = durationSec && durationSec > 0 ? Math.floor(durationSec) : Infinity;
 
+    const pickStart = (c) => {
+      for (const k of ['start', 'startSeconds', 'time', 'timestamp', 'seconds', 't']) {
+        if (c && c[k] !== undefined && c[k] !== null) {
+          const v = this.parseStartToSeconds(c[k]);
+          if (v !== null) return v;
+        }
+      }
+      return null;
+    };
+    const pickTitle = (c) => {
+      for (const k of ['title', 'label', 'name', 'text', 'chapter']) {
+        if (c && typeof c[k] === 'string' && c[k].trim()) return c[k].trim();
+      }
+      return '';
+    };
+
     const cleaned = rawChapters
-      .map(c => ({
-        start: Math.max(0, Math.floor(Number(c && c.start))),
-        title: (c && typeof c.title === 'string' ? c.title.trim() : '')
-      }))
-      .filter(c => Number.isFinite(c.start) && c.start <= max && c.title.length > 0)
+      .map(c => ({ start: pickStart(c), title: pickTitle(c) }))
+      .filter(c => c.start !== null && c.start <= max && c.title.length > 0)
       .sort((a, b) => a.start - b.start);
 
     // Drop duplicates / out-of-order starts
@@ -147,10 +205,9 @@ Output format:
       lastStart = c.start;
     }
 
-    // Ensure the first chapter anchors at 0
+    // Anchor the first chapter at 0 (shift it rather than inventing a row).
     if (result.length > 0 && result[0].start !== 0) {
-      result.unshift({ start: 0, title: result[0].title });
-      // remove the accidental duplicate title carry if the next is also 0 (can't happen) - safe
+      result[0] = { start: 0, title: result[0].title };
     }
     return result;
   }
