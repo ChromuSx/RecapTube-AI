@@ -6,17 +6,18 @@
 // response the page itself receives, then relay it to the isolated content script via
 // window.postMessage. This is robust against CSS/DOM redesigns because it never depends
 // on class names - it reads YouTube's own data.
-//
-// NOTE: source/type and the install-guard flag are RecapTube-specific (RT_*) so this can
-// coexist with SkipTube's interceptor (YSS_*) on the same page without either disabling
-// the other.
 
 (function () {
   'use strict';
 
   const MESSAGE_SOURCE = 'RT_INTERCEPTOR';
   const MESSAGE_TYPE = 'RT_TRANSCRIPT';
-  const TRANSCRIPT_URL_FRAGMENT = '/youtubei/v1/get_transcript';
+  // YouTube serves the transcript via two endpoints depending on the UI:
+  //   - get_transcript : legacy Polymer panel  (transcriptSegmentRenderer, startMs/endMs)
+  //   - get_panel      : modern view-model panel (transcriptSegmentViewModel, simpleText/timestamp)
+  // get_panel is generic (other engagement panels use it too), but parsing yields
+  // segments only for transcript responses, so hooking it is safe.
+  const TRANSCRIPT_URL_FRAGMENTS = ['/youtubei/v1/get_transcript', '/youtubei/v1/get_panel'];
 
   // Avoid double-injection (SPA navigations / multiple injections)
   if (window.__rtInterceptorInstalled) return;
@@ -31,8 +32,23 @@
   }
 
   /**
-   * Deep-walk an InnerTube get_transcript response and collect cues.
-   * Cues live under `transcriptSegmentRenderer` with startMs/endMs and snippet text.
+   * Parse a "M:SS" / "H:MM:SS" timestamp string to seconds.
+   * @param {string} t
+   * @returns {number|null}
+   */
+  function parseTimestampStr(t) {
+    const parts = (t || '').trim().split(':').map((n) => parseInt(n, 10));
+    if (parts.length === 0 || parts.some((n) => isNaN(n))) return null;
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    return null;
+  }
+
+  /**
+   * Deep-walk an InnerTube get_transcript / get_panel response and collect cues.
+   * Handles both transcript UIs:
+   *   - legacy `transcriptSegmentRenderer` (startMs/endMs + snippet.runs/simpleText)
+   *   - modern `transcriptSegmentViewModel` (simpleText + "timestamp" string, no endMs)
    * @param {*} json
    * @returns {Array<{time:number, end:number|undefined, text:string}>}
    */
@@ -40,12 +56,23 @@
     const segments = [];
     const seen = new Set();
 
+    const add = (time, end, text) => {
+      const clean = (text || '').trim();
+      if (time === null || time === undefined || isNaN(time) || !clean) return;
+      const key = time + '|' + clean;
+      if (seen.has(key)) return;
+      seen.add(key);
+      segments.push({ time, end: end === undefined || isNaN(end) ? undefined : end, text: clean });
+    };
+
     (function walk(node, depth) {
       if (!node || depth > 30 || typeof node !== 'object') return;
       if (Array.isArray(node)) {
         for (const item of node) walk(item, depth + 1);
         return;
       }
+
+      // Legacy Polymer renderer
       const seg = node.transcriptSegmentRenderer;
       if (seg) {
         const startMs = parseInt(seg.startMs, 10);
@@ -54,19 +81,15 @@
           (seg.snippet && Array.isArray(seg.snippet.runs)
             ? seg.snippet.runs.map((r) => r.text).join('')
             : seg.snippet && seg.snippet.simpleText) || '';
-        const clean = text.trim();
-        if (!isNaN(startMs) && clean) {
-          const key = startMs + '|' + clean;
-          if (!seen.has(key)) {
-            seen.add(key);
-            segments.push({
-              time: Math.floor(startMs / 1000),
-              end: isNaN(endMs) ? undefined : Math.floor(endMs / 1000),
-              text: clean
-            });
-          }
-        }
+        add(isNaN(startMs) ? null : Math.floor(startMs / 1000), isNaN(endMs) ? undefined : Math.floor(endMs / 1000), text);
       }
+
+      // Modern view-model (no endMs; timestamp is a formatted string)
+      const vm = node.transcriptSegmentViewModel;
+      if (vm) {
+        add(parseTimestampStr(vm.timestamp), undefined, vm.simpleText);
+      }
+
       for (const k in node) walk(node[k], depth + 1);
     })(json, 0);
 
@@ -97,7 +120,7 @@
   }
 
   function isTranscriptUrl(url) {
-    return typeof url === 'string' && url.indexOf(TRANSCRIPT_URL_FRAGMENT) !== -1;
+    return typeof url === 'string' && TRANSCRIPT_URL_FRAGMENTS.some((f) => url.indexOf(f) !== -1);
   }
 
   // ---- Hook fetch ----

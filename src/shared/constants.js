@@ -24,11 +24,15 @@ export const SELECTORS = {
   // --- Transcript extraction (reused from SkipTube, resilient to redesigns) ---
   // Description expander ("...more") that reveals the "Show transcript" button.
   DESCRIPTION_EXPANDER: '#expand, tp-yt-paper-button#expand, ytd-text-inline-expander #expand',
-  // "Show transcript" button lives in the description's transcript section.
-  TRANSCRIPT_BUTTON_SECTION: 'ytd-video-description-transcript-section-renderer button, ytd-video-description-transcript-section-renderer ytd-button-renderer button',
-  // Engagement panel. target-id substring "transcript" matches all known variants.
+  // "Show transcript" button. Modern YouTube renders it with an aria-label;
+  // keep the description section-renderer paths as fallback.
+  TRANSCRIPT_BUTTON_SECTION: 'button[aria-label*="transcript" i], button[aria-label*="trascrizione" i], ytd-video-description-transcript-section-renderer button, ytd-video-description-transcript-section-renderer ytd-button-renderer button',
+  // Engagement panel container (target-id substring matches all known variants).
   TRANSCRIPT_PANEL: 'ytd-engagement-panel-section-list-renderer[target-id*="transcript"]',
+  // Classic transcript rows.
   TRANSCRIPT_SEGMENTS: 'ytd-transcript-segment-renderer',
+  // 2026 view-model transcript rows (no dedicated segment-renderer element).
+  TRANSCRIPT_SEGMENTS_VM: 'ytd-transcript-segment-renderer .segment-text, .segment-text, [class*="segment-text"], div.segment',
   SEGMENT_TIMESTAMP: '.segment-timestamp, [class*="timestamp"]',
   SEGMENT_TEXT: '.segment-text, [class*="segment-text"], [class*="cue-text"]',
 
@@ -44,7 +48,10 @@ export const SELECTORS = {
 // NOTE: distinct from SkipTube's YSS_* contract so both extensions can coexist on a page.
 export const INTERCEPTOR = {
   MESSAGE_SOURCE: 'RT_INTERCEPTOR',
-  MESSAGE_TYPE: 'RT_TRANSCRIPT'
+  MESSAGE_TYPE: 'RT_TRANSCRIPT',
+  // Content -> MAIN-world request asking the interceptor to re-broadcast the last
+  // captured transcript (covers late content-script listener attachment).
+  REQUEST_TYPE: 'RT_REQUEST_TRANSCRIPT'
 };
 
 // Message actions for chrome.runtime messaging
