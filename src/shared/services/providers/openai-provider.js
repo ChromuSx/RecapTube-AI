@@ -1,15 +1,21 @@
-// openai-provider.js - OpenAI AI provider
+// openai-provider.js - OpenAI GPT provider implementation
 
 import { AIProvider } from './base-provider.js';
 import { APIError, APITimeoutError } from '../../errors/index.js';
+import { CONFIG } from '../../config.js';
 
 /**
- * OpenAIProvider - OpenAI implementation
+ * OpenAIProvider - OpenAI GPT API implementation
+ *
+ * NOTE: the GPT-5.x family on the Chat Completions API requires
+ * `max_completion_tokens` (not the legacy `max_tokens`) and only supports the
+ * default temperature (1), so we omit `temperature` entirely.
  */
 export class OpenAIProvider extends AIProvider {
   constructor(apiKey, config = {}) {
     super(apiKey, config);
-    this.baseUrl = config.baseUrl || 'https://api.openai.com/v1/chat/completions';
+    this.baseUrl = config.baseUrl || CONFIG.AI_PROVIDERS.OPENAI.ENDPOINT;
+    this.version = config.version;
   }
 
   /**
@@ -25,46 +31,27 @@ export class OpenAIProvider extends AIProvider {
    * @returns {Object}
    */
   getAvailableModels() {
-    return {
-      'gpt-5.5': 'gpt-5.5',
-      'gpt-5.4-mini': 'gpt-5.4-mini',
-      'gpt-5.4-nano': 'gpt-5.4-nano'
-    };
+    return CONFIG.AI_PROVIDERS.OPENAI.MODELS;
   }
 
   /**
-   * Validate OpenAI API key format
+   * Validate API key format
    * @param {string} apiKey - API key to validate
    * @returns {boolean}
    */
   static validateAPIKey(apiKey) {
-    if (!apiKey || typeof apiKey !== 'string') {
-      return false;
-    }
-
-    // OpenAI API keys start with 'sk-' (but not 'sk-ant-' which is Claude)
-    if (!apiKey.startsWith('sk-') || apiKey.startsWith('sk-ant-')) {
-      return false;
-    }
-
-    // Minimum length check
-    if (apiKey.length < 20) {
-      return false;
-    }
-
-    return true;
+    return typeof apiKey === 'string' && apiKey.startsWith('sk-') && apiKey.length > 20;
   }
 
   /**
-   * Create request payload for OpenAI API
+   * Create request payload
    * @param {string} systemPrompt - System prompt
    * @param {string} userMessage - User message
    * @param {string} model - Model identifier
    * @returns {Object}
    */
   createPayload(systemPrompt, userMessage, model) {
-    const models = this.getAvailableModels();
-    const modelId = models[model] || models['gpt-5.4-mini'];
+    const modelId = CONFIG.AI_PROVIDERS.OPENAI.MODELS[model] || CONFIG.AI_PROVIDERS.OPENAI.MODELS.GPT_5_4_MINI;
 
     return {
       model: modelId,
@@ -78,9 +65,9 @@ export class OpenAIProvider extends AIProvider {
           content: userMessage
         }
       ],
-      temperature: 0.3,
-      max_tokens: 4096,
-      response_format: { type: "json_object" }
+      // GPT-5.x: legacy `max_tokens` is rejected; use `max_completion_tokens`.
+      max_completion_tokens: 4096,
+      response_format: { type: 'json_object' }
     };
   }
 
@@ -94,8 +81,6 @@ export class OpenAIProvider extends AIProvider {
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
     try {
-      this.logger.debug('Sending request to OpenAI API', { model: payload.model });
-
       const response = await fetch(this.baseUrl, {
         method: 'POST',
         headers: {
@@ -111,7 +96,7 @@ export class OpenAIProvider extends AIProvider {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new APIError(
-          errorData.error?.message || `OpenAI API request failed: ${response.status}`,
+          `OpenAI API error: ${response.status} ${response.statusText}`,
           response.status,
           errorData
         );
@@ -123,7 +108,7 @@ export class OpenAIProvider extends AIProvider {
       clearTimeout(timeoutId);
 
       if (error.name === 'AbortError') {
-        throw new APITimeoutError(this.timeout);
+        throw new APITimeoutError('OpenAI', this.timeout);
       }
 
       throw error;
@@ -131,35 +116,26 @@ export class OpenAIProvider extends AIProvider {
   }
 
   /**
-   * Parse OpenAI API response
-   * @param {Object} response - OpenAI API response
+   * Parse OpenAI response
+   * @param {Object} response - API response
    * @returns {Object}
    */
   parseResponse(response) {
     try {
-      // OpenAI returns response in choices[0].message.content
-      const messageContent = response.choices?.[0]?.message?.content;
+      const content = response.choices[0].message.content;
 
-      if (!messageContent) {
-        throw new Error('No message content in OpenAI response');
+      // Strip markdown code blocks if present
+      let jsonText = content.trim();
+      if (jsonText.startsWith('```json')) {
+        jsonText = jsonText.replace(/```json\n?/, '').replace(/\n?```$/, '');
+      } else if (jsonText.startsWith('```')) {
+        jsonText = jsonText.replace(/```\n?/, '').replace(/\n?```$/, '');
       }
 
-      // Parse the JSON content
-      let jsonText = messageContent.trim();
-
-      // Remove markdown code blocks if present
-      jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-
-      // Parse JSON
       const parsed = JSON.parse(jsonText);
-
       return parsed;
     } catch (error) {
-      this.logger.error('Failed to parse OpenAI response', {
-        error: error.message,
-        response: JSON.stringify(response).substring(0, 200)
-      });
-      throw new APIError('Failed to parse OpenAI response', 0, { originalError: error.message });
+      throw new APIError(`Failed to parse OpenAI response: ${error.message}`, null, response);
     }
   }
 
@@ -169,14 +145,19 @@ export class OpenAIProvider extends AIProvider {
    */
   createTestPayload() {
     return {
-      model: 'gpt-5.4-mini',
+      model: CONFIG.AI_PROVIDERS.OPENAI.MODELS.GPT_5_4_MINI,
       messages: [
         {
+          role: 'system',
+          content: 'Test'
+        },
+        {
           role: 'user',
-          content: 'Hello'
+          content: 'Reply with {"status":"ok"}'
         }
       ],
-      max_tokens: 10
+      max_completion_tokens: 10,
+      response_format: { type: 'json_object' }
     };
   }
 }
