@@ -301,6 +301,7 @@ class RecapManager {
         <span class="rt-brand"><span class="rt-brand-mark">▶</span> RecapTube AI</span>
         <span class="rt-lang"></span>
         <span class="rt-head-actions">
+          <button class="rt-btn rt-copy" title="Copy recap">⧉</button>
           <button class="rt-btn rt-regen" title="Regenerate">⟳</button>
           <button class="rt-btn rt-toggle" title="Collapse">▾</button>
         </span>
@@ -318,8 +319,70 @@ class RecapManager {
     panel.querySelector('.rt-regen').addEventListener('click', () => {
       if (this.currentVideoId) this.processVideo(this.currentVideoId, { force: true });
     });
+    panel.querySelector('.rt-copy').addEventListener('click', (e) => this.copyRecap(e.currentTarget));
 
     return panel;
+  }
+
+  /** Format the current recap as clean plain text for the clipboard. */
+  buildRecapText() {
+    const r = this.lastRecap;
+    if (!r) return '';
+    const lines = [];
+    const title = this.getTitle();
+    if (title) lines.push(title, '');
+    if (r.summary) { lines.push('SUMMARY', r.summary.trim(), ''); }
+    if (Array.isArray(r.keyPoints) && r.keyPoints.length) {
+      lines.push('KEY POINTS');
+      r.keyPoints.forEach(p => lines.push('• ' + p));
+      lines.push('');
+    }
+    if (Array.isArray(r.chapters) && r.chapters.length) {
+      lines.push('CHAPTERS');
+      r.chapters.forEach(c => lines.push(`${this.formatTime(c.start)}  ${c.title}`));
+      lines.push('');
+    }
+    const url = (this.currentVideoId ? `https://www.youtube.com/watch?v=${this.currentVideoId}` : '');
+    if (url) lines.push(url);
+    return lines.join('\n').trim();
+  }
+
+  /** Copy the recap to the clipboard with brief button feedback. */
+  async copyRecap(btn) {
+    const text = this.buildRecapText();
+    if (!text) { this.showToast('Nothing to copy yet', NOTIFICATION_TYPES.WARNING); return; }
+    const ok = await this.writeClipboard(text);
+    if (btn) {
+      const prev = btn.textContent;
+      btn.textContent = ok ? '✓' : '✕';
+      btn.classList.toggle('rt-copied', ok);
+      setTimeout(() => { btn.textContent = prev; btn.classList.remove('rt-copied'); }, 1400);
+    }
+    this.showToast(ok ? 'Recap copied to clipboard' : 'Copy failed', ok ? NOTIFICATION_TYPES.SUCCESS : NOTIFICATION_TYPES.ERROR);
+  }
+
+  /** Clipboard write with a textarea fallback (navigator.clipboard can be blocked). */
+  async writeClipboard(text) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {
+      /* fall through to legacy path */
+    }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      return ok;
+    } catch {
+      return false;
+    }
   }
 
   renderPanel({ state, recap, message, hasNative }) {
@@ -327,6 +390,10 @@ class RecapManager {
     if (!panel) return;
     const body = panel.querySelector('.rt-body');
     const langEl = panel.querySelector('.rt-lang');
+    const copyBtn = panel.querySelector('.rt-copy');
+
+    // Copy button only makes sense once a recap is on screen.
+    if (copyBtn) copyBtn.style.display = state === 'ready' ? '' : 'none';
 
     if (state === 'loading') {
       body.innerHTML = `<div class="rt-loading"><span class="rt-spinner"></span> ${INFO_MESSAGES.GENERATING}</div>`;
@@ -626,6 +693,7 @@ html[dark] .${CSS_CLASSES.PANEL} .rt-head{background:#181818;border-color:#333;}
   border-radius:6px;padding:4px 8px;line-height:1;
 }
 .${CSS_CLASSES.PANEL} .rt-btn:hover{background:rgba(127,127,127,.18);}
+.${CSS_CLASSES.PANEL} .rt-btn.rt-copied{color:#27ae60;}
 .${CSS_CLASSES.PANEL} .rt-body{padding:12px;max-height:60vh;overflow-y:auto;font-size:13px;line-height:1.5;}
 .${CSS_CLASSES.PANEL}.rt-collapsed .rt-body{display:none;}
 .${CSS_CLASSES.PANEL} .rt-section + .rt-section{margin-top:14px;}
