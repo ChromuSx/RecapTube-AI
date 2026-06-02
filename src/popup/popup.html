@@ -2,199 +2,330 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>RecapTube AI</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
   <style>
-    :root{
-      --bg:#ffffff; --fg:#0f0f0f; --muted:#606060; --border:#e5e5e5;
-      --card:#fafafa; --accent:#3ea6ff; --accent-strong:#1a73e8;
-      --ok:#1e8e3e; --err:#d93025;
+    .material-icons {
+      font-family: 'Material Icons';
+      font-weight: normal; font-style: normal; font-size: 24px;
+      display: inline-block; line-height: 1; text-transform: none;
+      letter-spacing: normal; word-wrap: normal; white-space: nowrap; direction: ltr;
+      -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+      -moz-osx-font-smoothing: grayscale; font-feature-settings: 'liga';
     }
-    html[data-theme="dark"]{
-      --bg:#0f0f0f; --fg:#f1f1f1; --muted:#aaaaaa; --border:#303030;
-      --card:#1c1c1c; --accent:#3ea6ff; --accent-strong:#3ea6ff;
-      --ok:#81c995; --err:#f28b82;
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      width: 380px; min-height: 600px;
+      font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #ffffff; color: #030303; overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
     }
-    *{box-sizing:border-box;}
-    body{
-      width:380px;margin:0;font-family:"Roboto","Segoe UI",Arial,sans-serif;
-      background:var(--bg);color:var(--fg);font-size:13px;
-    }
-    header{
-      display:flex;align-items:center;gap:10px;padding:14px 16px;
-      border-bottom:1px solid var(--border);
-    }
-    header .mark{color:#ff0033;font-size:20px;}
-    header h1{font-size:16px;margin:0;font-weight:600;flex:1;}
-    header .theme-btn{cursor:pointer;background:none;border:none;color:var(--fg);font-size:16px;}
-    .section{padding:14px 16px;border-bottom:1px solid var(--border);}
-    .section h2{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 10px;}
-    .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:9px 0;}
-    .row label{flex:1;cursor:pointer;}
-    .hint{color:var(--muted);font-size:11px;margin-top:2px;}
-    select, input[type="text"], input[type="password"]{
-      background:var(--bg);color:var(--fg);border:1px solid var(--border);
-      border-radius:8px;padding:7px 9px;font-size:13px;max-width:190px;width:190px;
-    }
-    .field{display:flex;flex-direction:column;gap:6px;margin:10px 0;}
-    .field > .label{font-weight:500;}
-    .keyrow{display:flex;gap:6px;}
-    .keyrow input{flex:1;max-width:none;width:auto;}
-    button.btn{
-      background:var(--accent-strong);color:#fff;border:none;border-radius:8px;
-      padding:8px 12px;cursor:pointer;font-size:12px;font-weight:500;
-    }
-    button.btn.secondary{background:transparent;color:var(--accent-strong);border:1px solid var(--accent-strong);}
-    button.btn:hover{filter:brightness(1.05);}
-    .status{font-size:11px;font-weight:600;}
-    .status.ok{color:var(--ok);}
-    .status.err{color:var(--err);}
-    /* switch */
-    .switch{position:relative;display:inline-block;width:38px;height:22px;flex:0 0 auto;}
-    .switch input{opacity:0;width:0;height:0;}
-    .slider{position:absolute;inset:0;background:#bbb;border-radius:22px;transition:.2s;cursor:pointer;}
-    .slider:before{content:"";position:absolute;height:16px;width:16px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s;}
-    input:checked + .slider{background:var(--accent-strong);}
-    input:checked + .slider:before{transform:translateX(16px);}
-    .provider-keys{display:none;}
-    .provider-keys.active{display:block;}
-    .whitelist-list{margin-top:8px;max-height:110px;overflow-y:auto;}
-    .wl-item{display:flex;justify-content:space-between;align-items:center;padding:5px 8px;background:var(--card);border-radius:6px;margin:4px 0;}
-    .wl-item button{background:none;border:none;color:var(--err);cursor:pointer;font-size:14px;}
-    .actions{display:flex;gap:8px;flex-wrap:wrap;}
-    footer{padding:12px 16px;display:flex;gap:14px;justify-content:center;}
-    footer a{color:var(--muted);text-decoration:none;font-size:11px;}
-    footer a:hover{color:var(--accent-strong);}
-    #toast{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);background:#323232;color:#fff;padding:8px 14px;border-radius:8px;font-size:12px;opacity:0;transition:opacity .25s;pointer-events:none;max-width:340px;text-align:center;}
-    #toast.show{opacity:1;}
+    .container { display: flex; flex-direction: column; }
+
+    /* Header */
+    .header { display: flex; align-items: center; padding: 20px 16px 16px; gap: 12px; }
+    .logo { width: 40px; height: 40px; border-radius: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; }
+    .logo img { width: 100%; height: 100%; object-fit: contain; }
+    .title { flex: 1; }
+    .title h1 { font-size: 22px; font-weight: 400; color: #030303; margin: 0; line-height: 28px; }
+    .title .subtitle { font-size: 14px; color: #606060; font-weight: 400; line-height: 20px; letter-spacing: 0.25px; margin-top: 4px; }
+
+    /* Status */
+    .status { padding: 8px 16px 16px; display: flex; align-items: center; justify-content: space-between; }
+    .status-indicator { display: flex; align-items: center; font-size: 14px; font-weight: 400; color: #030303; gap: 12px; letter-spacing: 0.25px; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; transition: all 0.2s cubic-bezier(0.2, 0, 0, 1); }
+    .status-dot.active { background: #1a73e8; }
+    .status-dot.inactive { background: #5f6368; }
+
+    /* Toggle Switch - Material Design 3 */
+    .toggle-switch { position: relative; width: 52px; height: 32px; cursor: pointer; flex-shrink: 0; }
+    .toggle-switch input { display: none; }
+    .toggle-switch .track { position: absolute; inset: 0; background: #e0e0e0; border-radius: 16px; transition: background 200ms cubic-bezier(0.2, 0, 0, 1); border: 2px solid #79747e; }
+    .toggle-switch .slider { position: absolute; top: 4px; left: 4px; width: 24px; height: 24px; background: #79747e; border-radius: 50%; transition: all 200ms cubic-bezier(0.2, 0, 0, 1); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); }
+    .toggle-switch input:checked ~ .track { background: #1a73e8; border-color: #1a73e8; }
+    .toggle-switch input:checked ~ .slider { transform: translateX(20px); background: #fff; }
+
+    /* Settings */
+    .settings { padding: 16px 0; margin-bottom: 8px; }
+    .settings h2 { font-size: 11px; font-weight: 500; padding: 0 16px 8px; color: #5f6368; margin: 0; text-transform: uppercase; letter-spacing: 1px; }
+    .setting-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; min-height: 56px; transition: background 200ms cubic-bezier(0.2, 0, 0, 1); }
+    .setting-item.clickable { cursor: pointer; }
+    .setting-item.clickable:hover { background: rgba(0, 0, 0, 0.04); }
+    .setting-item.clickable:active { background: rgba(0, 0, 0, 0.08); }
+    .setting-label { display: flex; align-items: center; font-size: 14px; color: #030303; gap: 16px; font-weight: 400; letter-spacing: 0.25px; user-select: none; line-height: 20px; }
+    .setting-label .sub { font-size: 12px; color: #606060; margin-top: 2px; }
+    .setting-icon { font-size: 20px; width: 24px; height: 24px; text-align: center; color: #5f6368; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+
+    /* Checkbox - Material Switch */
+    .checkbox-wrapper { position: relative; width: 52px; height: 32px; flex-shrink: 0; }
+    .checkbox-wrapper input { display: none; }
+    .checkbox-wrapper label { position: absolute; inset: 0; background: #e0e0e0; border-radius: 16px; cursor: pointer; transition: background 200ms cubic-bezier(0.2, 0, 0, 1); border: 2px solid #79747e; }
+    .checkbox-wrapper label::after { content: ''; position: absolute; top: 2px; left: 2px; width: 24px; height: 24px; background: #79747e; border-radius: 50%; transition: all 200ms cubic-bezier(0.2, 0, 0, 1); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); }
+    .checkbox-wrapper input:checked + label { background: #1a73e8; border-color: #1a73e8; }
+    .checkbox-wrapper input:checked + label::after { transform: translateX(20px); background: #fff; }
+
+    /* Select dropdown (Material pill) */
+    .rt-select { padding: 8px 12px; border-radius: 16px; border: 1px solid #ccc; background: #f9f9f9; font-size: 13px; cursor: pointer; font-family: 'Roboto', 'Arial', sans-serif; color: #030303; max-width: 190px; }
+    .rt-select:focus { outline: none; border-color: #1a73e8; }
+
+    /* API key block */
+    .key-block { padding: 16px; }
+    .key-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .key-head .name { font-size: 14px; color: #0f0f0f; font-weight: 500; }
+    .key-status { font-size: 12px; padding: 4px 8px; border-radius: 12px; background: #ff0000; color: white; font-weight: 500; }
+    .key-status.ok { background: #00aa00; }
+    .key-row { display: flex; gap: 8px; margin-bottom: 8px; }
+    .key-row input { flex: 1; padding: 10px 12px; border: 2px solid #e5e5e5; border-radius: 8px; font-size: 13px; font-family: 'Roboto', monospace; }
+    .key-row input:focus { outline: none; border-color: #065fd4; }
+    .key-hint { font-size: 12px; color: #606060; line-height: 1.5; }
+    .key-hint a { color: #065fd4; text-decoration: none; }
+
+    /* Buttons - Material Design 3 */
+    .action-buttons { display: flex; gap: 8px; padding: 16px; flex-wrap: wrap; }
+    .btn { flex: 1; padding: 10px 24px; background: transparent; border: 1px solid #dadce0; border-radius: 20px; color: #1a73e8; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 200ms cubic-bezier(0.2, 0, 0, 1); font-family: 'Roboto', sans-serif; letter-spacing: 0.25px; line-height: 20px; white-space: nowrap; }
+    .btn:hover { background: rgba(26, 115, 232, 0.04); border-color: #1a73e8; }
+    .btn:active { background: rgba(26, 115, 232, 0.12); }
+    .btn.primary { background: #1a73e8; color: white; border-color: #1a73e8; }
+    .btn.primary:hover { background: #1765cc; box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px rgba(60, 64, 67, 0.15); }
+    .btn.primary:active { background: #1557b0; }
+    .btn.icon-btn { flex: 0 0 auto; padding: 10px 12px; }
+
+    /* Footer */
+    .footer { padding: 16px 24px; text-align: center; font-size: 12px; color: #606060; border-top: 1px solid #e5e5e5; margin-top: auto; }
+    .footer a { color: #065fd4; text-decoration: none; margin: 0 8px; font-weight: 400; transition: color 0.1s; }
+    .footer a:hover { color: #0f0f0f; }
+
+    /* Whitelist list */
+    .whitelist-list { padding: 0 16px; }
+    .whitelist-item { display: flex; align-items: center; justify-content: space-between; padding: 12px; background: #f9f9f9; border: 1px solid #e5e5e5; border-radius: 8px; margin-bottom: 8px; animation: slideInLeft 0.2s ease; }
+    .whitelist-item:hover { background: #f2f2f2; }
+    .whitelist-item-name { font-size: 14px; color: #0f0f0f; font-weight: 500; }
+    .whitelist-item-remove { background: #ff0000; color: white; border: none; padding: 6px 12px; border-radius: 12px; font-size: 12px; cursor: pointer; transition: background 0.2s; font-family: 'Roboto', 'Arial', sans-serif; }
+    .whitelist-item-remove:hover { background: #cc0000; }
+    .empty-state { text-align: center; padding: 24px 20px; color: #606060; font-size: 14px; }
+
+    /* Toast */
+    .toast-container { position: fixed; top: 20px; right: 20px; z-index: 2000; display: flex; flex-direction: column; gap: 10px; }
+    .toast { background: white; border-radius: 8px; padding: 14px 16px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); display: flex; align-items: center; gap: 12px; min-width: 240px; max-width: 320px; animation: slideInRight 0.3s ease; border-left: 4px solid #065fd4; }
+    .toast.success { border-left-color: #00aa00; }
+    .toast.error { border-left-color: #ff0000; }
+    .toast.warning { border-left-color: #ff8800; }
+    .toast.info { border-left-color: #065fd4; }
+    .toast-message { flex: 1; font-size: 14px; color: #0f0f0f; }
+
+    /* Range slider thumbs */
+    input[type="range"] { -webkit-appearance: none; appearance: none; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; background: #065fd4; border-radius: 50%; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
+    input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); box-shadow: 0 0 0 8px rgba(6, 95, 212, 0.1); }
+
+    /* Animations */
+    @keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    @keyframes slideInLeft { from { transform: translateX(-20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+    /* Dark mode toggle button */
+    .dark-mode-toggle { position: fixed; bottom: 20px; right: 20px; width: 40px; height: 40px; background: #065fd4; border: none; border-radius: 50%; color: white; font-size: 20px; cursor: pointer; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2); transition: transform 0.2s, background 0.2s; z-index: 100; display: flex; align-items: center; justify-content: center; }
+    .dark-mode-toggle:hover { transform: scale(1.1); background: #0054b9; }
+
+    /* ========== DARK MODE ========== */
+    body.dark-mode { background: #0f0f0f; color: #f1f1f1; }
+    body.dark-mode .title h1,
+    body.dark-mode .setting-label,
+    body.dark-mode .status-indicator,
+    body.dark-mode .settings h2 { color: #f1f1f1; }
+    body.dark-mode .title .subtitle,
+    body.dark-mode .setting-label .sub,
+    body.dark-mode .footer,
+    body.dark-mode .empty-state { color: #aaaaaa; }
+    body.dark-mode .settings h2 { color: #aaaaaa; }
+    body.dark-mode .footer { border-color: #ffffff1a; }
+    body.dark-mode .setting-item.clickable:hover { background: rgba(255,255,255,0.05); }
+    body.dark-mode .btn { background: #272727; color: #f1f1f1; border-color: #3a3a3a; }
+    body.dark-mode .btn:hover { background: #3d3d3d; }
+    body.dark-mode .btn.primary { background: #3ea6ff; color: #000; border-color: #3ea6ff; }
+    body.dark-mode .btn.primary:hover { background: #5cb3ff; }
+    body.dark-mode .rt-select { background: #181818; color: #f1f1f1; border-color: #3a3a3a; }
+    body.dark-mode .key-head .name { color: #f1f1f1; }
+    body.dark-mode .key-row input { background: #181818; border-color: #3a3a3a; color: #f1f1f1; }
+    body.dark-mode .key-hint { color: #aaaaaa; }
+    body.dark-mode .key-hint a, body.dark-mode .footer a { color: #3ea6ff; }
+    body.dark-mode .footer a:hover { color: #f1f1f1; }
+    body.dark-mode .whitelist-item { background: #181818; border-color: #3a3a3a; }
+    body.dark-mode .whitelist-item:hover { background: #2a2a2a; }
+    body.dark-mode .whitelist-item-name { color: #f1f1f1; }
+    body.dark-mode .toast { background: #212121; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+    body.dark-mode .toast-message { color: #f1f1f1; }
+    body.dark-mode .dark-mode-toggle { background: #f1f1f1; color: #0f0f0f; }
+    body.dark-mode .dark-mode-toggle:hover { background: #e5e5e5; }
   </style>
 </head>
 <body>
-  <header>
-    <span class="mark">▶</span>
-    <h1>RecapTube AI</h1>
-    <button id="theme-btn" class="theme-btn" title="Toggle theme">🌙</button>
-  </header>
-
-  <!-- Master -->
-  <div class="section">
-    <div class="row">
-      <label for="enabled"><strong>Enable RecapTube</strong><div class="hint">Summarize &amp; chapter videos automatically</div></label>
-      <span class="switch"><input type="checkbox" id="enabled" /><span class="slider"></span></span>
-    </div>
-  </div>
-
-  <!-- AI provider & keys -->
-  <div class="section">
-    <h2>AI provider</h2>
-    <div class="field">
-      <span class="label">Provider</span>
-      <select id="provider">
-        <option value="claude">Anthropic Claude</option>
-        <option value="openai">OpenAI GPT</option>
-      </select>
-    </div>
-    <div class="field">
-      <span class="label">Model</span>
-      <select id="model">
-        <option value="haiku" data-provider="claude">Claude Haiku (fast)</option>
-        <option value="sonnet" data-provider="claude">Claude Sonnet (best)</option>
-        <option value="gpt-5.5" data-provider="openai">GPT-5.5 (best)</option>
-        <option value="gpt-5.4-mini" data-provider="openai">GPT-5.4 Mini (fast)</option>
-        <option value="gpt-5.4-nano" data-provider="openai">GPT-5.4 Nano (cheapest)</option>
-      </select>
-    </div>
-
-    <div id="claude-keys" class="provider-keys">
-      <div class="field">
-        <span class="label">Claude API key <span id="claude-status" class="status err">Not configured</span></span>
-        <div class="keyrow">
-          <input type="password" id="claude-key" placeholder="sk-ant-..." />
-          <button class="btn" id="save-claude">Save</button>
-        </div>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="logo"><img src="logo.png" alt="RecapTube AI Logo"></div>
+      <div class="title">
+        <h1>RecapTube AI</h1>
+        <div class="subtitle">Summarize videos with AI</div>
       </div>
     </div>
-    <div id="openai-keys" class="provider-keys">
-      <div class="field">
-        <span class="label">OpenAI API key <span id="openai-status" class="status err">Not configured</span></span>
-        <div class="keyrow">
-          <input type="password" id="openai-key" placeholder="sk-..." />
-          <button class="btn" id="save-openai">Save</button>
+
+    <!-- Status / master toggle -->
+    <div class="status">
+      <div class="status-indicator">
+        <div class="status-dot"></div>
+        <span id="status-text">Active</span>
+      </div>
+      <label class="toggle-switch">
+        <input type="checkbox" id="enabled">
+        <div class="track"></div>
+        <div class="slider"></div>
+      </label>
+    </div>
+
+    <!-- AI provider -->
+    <div class="settings">
+      <h2><span class="material-icons" style="font-size:14px;vertical-align:middle;">vpn_key</span> AI Configuration</h2>
+
+      <div class="setting-item">
+        <div class="setting-label"><span class="material-icons setting-icon">cloud</span><span>AI Provider</span></div>
+        <select id="provider" class="rt-select">
+          <option value="claude">Anthropic Claude</option>
+          <option value="openai">OpenAI GPT</option>
+        </select>
+      </div>
+
+      <div class="setting-item">
+        <div class="setting-label"><span class="material-icons setting-icon">tune</span><span>Model</span></div>
+        <select id="model" class="rt-select">
+          <option value="haiku" data-provider="claude">Claude Haiku (fast)</option>
+          <option value="sonnet" data-provider="claude">Claude Sonnet (best)</option>
+          <option value="gpt-5.5" data-provider="openai">GPT-5.5 (best)</option>
+          <option value="gpt-5.4-mini" data-provider="openai">GPT-5.4 Mini (fast)</option>
+          <option value="gpt-5.4-nano" data-provider="openai">GPT-5.4 Nano (cheapest)</option>
+        </select>
+      </div>
+
+      <!-- Claude key -->
+      <div id="claude-keys" class="key-block" style="display:none;">
+        <div class="key-head">
+          <span class="name">Claude API Key</span>
+          <span id="claude-status" class="key-status">Not configured</span>
         </div>
+        <div class="key-row">
+          <input type="password" id="claude-key" placeholder="sk-ant-api03-...">
+          <button class="btn primary" id="save-claude">Save</button>
+        </div>
+        <div class="key-hint">Get your key from <a href="https://console.anthropic.com/settings/keys" target="_blank">Anthropic Console</a>. Stored locally, never shared.</div>
+      </div>
+
+      <!-- OpenAI key -->
+      <div id="openai-keys" class="key-block" style="display:none;">
+        <div class="key-head">
+          <span class="name">OpenAI API Key</span>
+          <span id="openai-status" class="key-status">Not configured</span>
+        </div>
+        <div class="key-row">
+          <input type="password" id="openai-key" placeholder="sk-...">
+          <button class="btn primary" id="save-openai">Save</button>
+        </div>
+        <div class="key-hint">Get your key from <a href="https://platform.openai.com/api-keys" target="_blank">OpenAI Platform</a>. Stored locally, never shared.</div>
       </div>
     </div>
+
+    <!-- What to generate -->
+    <div class="settings">
+      <h2><span class="material-icons" style="font-size:14px;vertical-align:middle;">auto_awesome</span> What to generate</h2>
+
+      <label class="setting-item clickable" for="autoGenerate">
+        <div class="setting-label"><span class="material-icons setting-icon">bolt</span>
+          <span>Generate automatically<div class="sub">Off = show a button (saves API cost)</div></span></div>
+        <div class="checkbox-wrapper"><input type="checkbox" id="autoGenerate"><label for="autoGenerate"></label></div>
+      </label>
+
+      <label class="setting-item clickable" for="generateSummary">
+        <div class="setting-label"><span class="material-icons setting-icon">subject</span><span>Summary &amp; key points</span></div>
+        <div class="checkbox-wrapper"><input type="checkbox" id="generateSummary"><label for="generateSummary"></label></div>
+      </label>
+
+      <label class="setting-item clickable" for="generateChapters">
+        <div class="setting-label"><span class="material-icons setting-icon">list</span><span>Auto chapters (when none)</span></div>
+        <div class="checkbox-wrapper"><input type="checkbox" id="generateChapters"><label for="generateChapters"></label></div>
+      </label>
+
+      <label class="setting-item clickable" for="showProgressMarkers">
+        <div class="setting-label"><span class="material-icons setting-icon">linear_scale</span><span>Chapter markers on the bar</span></div>
+        <div class="checkbox-wrapper"><input type="checkbox" id="showProgressMarkers"><label for="showProgressMarkers"></label></div>
+      </label>
+
+      <label class="setting-item clickable" for="autoOpenPanel">
+        <div class="setting-label"><span class="material-icons setting-icon">open_in_new</span><span>Open the panel automatically</span></div>
+        <div class="checkbox-wrapper"><input type="checkbox" id="autoOpenPanel"><label for="autoOpenPanel"></label></div>
+      </label>
+
+      <div class="setting-item">
+        <div class="setting-label"><span class="material-icons setting-icon">notes</span><span>Summary length</span></div>
+        <select id="summaryLength" class="rt-select">
+          <option value="short">Short</option>
+          <option value="medium">Medium</option>
+          <option value="long">Long</option>
+        </select>
+      </div>
+
+      <div class="setting-item">
+        <div class="setting-label"><span class="material-icons setting-icon">translate</span><span>Output language</span></div>
+        <select id="outputLanguage" class="rt-select">
+          <option value="auto">Auto (browser)</option>
+          <option value="en">English</option>
+          <option value="it">Italiano</option>
+          <option value="es">Español</option>
+          <option value="fr">Français</option>
+          <option value="de">Deutsch</option>
+          <option value="pt">Português</option>
+          <option value="nl">Nederlands</option>
+          <option value="ru">Русский</option>
+          <option value="ja">日本語</option>
+          <option value="ko">한국어</option>
+          <option value="zh">中文</option>
+          <option value="ar">العربية</option>
+          <option value="hi">हिन्दी</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Excluded channels -->
+    <div class="settings">
+      <h2><span class="material-icons" style="font-size:14px;vertical-align:middle;">block</span> Excluded channels</h2>
+      <div class="action-buttons" style="padding-top:0;">
+        <button class="btn" id="add-current">Exclude current channel</button>
+      </div>
+      <div class="whitelist-list" id="whitelist-list"></div>
+    </div>
+
+    <!-- Cache -->
+    <div class="settings">
+      <h2><span class="material-icons" style="font-size:14px;vertical-align:middle;">cached</span> Cache</h2>
+      <div class="action-buttons" style="padding-top:0;">
+        <button class="btn primary" id="regen">Regenerate</button>
+        <button class="btn" id="clear-current">Clear video</button>
+        <button class="btn" id="clear-all">Clear all</button>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <a href="help.html" target="_blank">Help</a>
+      <a href="welcome.html" target="_blank">Welcome</a>
+    </div>
   </div>
 
-  <!-- Recap settings -->
-  <div class="section">
-    <h2>What to generate</h2>
-    <div class="row"><label for="autoGenerate">Generate automatically<div class="hint">Off = show a "Generate" button instead (saves API cost)</div></label>
-      <span class="switch"><input type="checkbox" id="autoGenerate" /><span class="slider"></span></span></div>
-    <div class="row"><label for="generateSummary">Summary &amp; key points</label>
-      <span class="switch"><input type="checkbox" id="generateSummary" /><span class="slider"></span></span></div>
-    <div class="row"><label for="generateChapters">Auto chapters (when the video has none)</label>
-      <span class="switch"><input type="checkbox" id="generateChapters" /><span class="slider"></span></span></div>
-    <div class="row"><label for="showProgressMarkers">Chapter markers on the progress bar</label>
-      <span class="switch"><input type="checkbox" id="showProgressMarkers" /><span class="slider"></span></span></div>
-    <div class="row"><label for="autoOpenPanel">Open the panel automatically</label>
-      <span class="switch"><input type="checkbox" id="autoOpenPanel" /><span class="slider"></span></span></div>
+  <div class="toast-container" id="toast-container"></div>
 
-    <div class="field">
-      <span class="label">Summary length</span>
-      <select id="summaryLength">
-        <option value="short">Short</option>
-        <option value="medium">Medium</option>
-        <option value="long">Long</option>
-      </select>
-    </div>
-    <div class="field">
-      <span class="label">Output language</span>
-      <select id="outputLanguage">
-        <option value="auto">Auto (browser language)</option>
-        <option value="en">English</option>
-        <option value="it">Italiano</option>
-        <option value="es">Español</option>
-        <option value="fr">Français</option>
-        <option value="de">Deutsch</option>
-        <option value="pt">Português</option>
-        <option value="nl">Nederlands</option>
-        <option value="ru">Русский</option>
-        <option value="ja">日本語</option>
-        <option value="ko">한국어</option>
-        <option value="zh">中文</option>
-        <option value="ar">العربية</option>
-        <option value="hi">हिन्दी</option>
-      </select>
-    </div>
-  </div>
+  <button class="dark-mode-toggle" id="dark-mode-toggle" title="Toggle dark mode">
+    <span class="material-icons">dark_mode</span>
+  </button>
 
-  <!-- Excluded channels -->
-  <div class="section">
-    <h2>Excluded channels</h2>
-    <div class="actions">
-      <button class="btn secondary" id="add-current">Exclude current channel</button>
-    </div>
-    <div class="whitelist-list" id="whitelist-list"></div>
-  </div>
-
-  <!-- Cache -->
-  <div class="section">
-    <h2>Cache</h2>
-    <div class="actions">
-      <button class="btn secondary" id="regen">Regenerate this video</button>
-      <button class="btn secondary" id="clear-current">Clear this video</button>
-      <button class="btn secondary" id="clear-all">Clear all</button>
-    </div>
-  </div>
-
-  <footer>
-    <a href="help.html" target="_blank">Help</a>
-    <a href="welcome.html" target="_blank">Welcome</a>
-    <a href="https://console.anthropic.com/settings/keys" target="_blank">Get Claude key</a>
-    <a href="https://platform.openai.com/api-keys" target="_blank">Get OpenAI key</a>
-  </footer>
-
-  <div id="toast"></div>
   <script src="popup-bundle.js"></script>
 </body>
 </html>

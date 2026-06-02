@@ -44,6 +44,9 @@ class PopupManager {
     this.updateModelOptions(this.advanced.aiProvider, this.advanced.aiModel);
     this.updateProviderKeysUI(this.advanced.aiProvider);
 
+    // Status dot reflects the master toggle
+    this.updateStatusDot(this.settings.enabled);
+
     // Key status
     this.refreshKeyStatus(data);
     this.renderWhitelist();
@@ -51,15 +54,27 @@ class PopupManager {
 
   async loadTheme() {
     const { darkMode } = await chrome.storage.local.get('darkMode');
-    const dark = darkMode !== false; // default dark
-    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-    this.$('theme-btn').textContent = dark ? '☀️' : '🌙';
+    const dark = darkMode === true; // default light, matching SkipTube
+    document.body.classList.toggle('dark-mode', dark);
+    this.setThemeIcon(dark);
+  }
+
+  setThemeIcon(dark) {
+    const icon = this.$('dark-mode-toggle').querySelector('.material-icons');
+    if (icon) icon.textContent = dark ? 'light_mode' : 'dark_mode';
+  }
+
+  updateStatusDot(active) {
+    const dot = document.querySelector('.status-dot');
+    const text = this.$('status-text');
+    if (dot) { dot.classList.toggle('active', !!active); dot.classList.toggle('inactive', !active); }
+    if (text) text.textContent = active ? 'Active' : 'Inactive';
   }
 
   refreshKeyStatus(data) {
     const setStatus = (el, ok) => {
       el.textContent = ok ? 'Configured' : 'Not configured';
-      el.className = 'status ' + (ok ? 'ok' : 'err');
+      el.className = 'key-status' + (ok ? ' ok' : '');
     };
     setStatus(this.$('claude-status'), !!(data.claudeApiKey && data.claudeApiKey.length >= 20));
     setStatus(this.$('openai-status'), !!(data.openaiApiKey && data.openaiApiKey.length >= 20));
@@ -79,14 +94,14 @@ class PopupManager {
   }
 
   updateProviderKeysUI(provider) {
-    this.$('claude-keys').classList.toggle('active', provider === 'claude');
-    this.$('openai-keys').classList.toggle('active', provider === 'openai');
+    this.$('claude-keys').style.display = provider === 'claude' ? 'block' : 'none';
+    this.$('openai-keys').style.display = provider === 'openai' ? 'block' : 'none';
   }
 
   // ----------------------------------------------------------------- events
   bindEvents() {
     // Theme
-    this.$('theme-btn').addEventListener('click', () => this.toggleTheme());
+    this.$('dark-mode-toggle').addEventListener('click', () => this.toggleTheme());
 
     // Feature toggles / selects -> settings
     const settingControls = [
@@ -98,6 +113,7 @@ class PopupManager {
       this.$(id).addEventListener('change', () => {
         if (this.isLoading) return;
         this.settings[id] = kind === 'checkbox' ? this.$(id).checked : this.$(id).value;
+        if (id === 'enabled') this.updateStatusDot(this.settings.enabled);
         this.saveSettings();
       });
     });
@@ -135,9 +151,8 @@ class PopupManager {
   }
 
   async toggleTheme() {
-    const dark = document.documentElement.getAttribute('data-theme') !== 'dark';
-    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-    this.$('theme-btn').textContent = dark ? '☀️' : '🌙';
+    const dark = document.body.classList.toggle('dark-mode');
+    this.setThemeIcon(dark);
     await chrome.storage.local.set({ darkMode: dark });
   }
 
@@ -175,8 +190,8 @@ class PopupManager {
     const list = this.advanced.channelWhitelist || [];
     const container = this.$('whitelist-list');
     container.innerHTML = list.length
-      ? list.map((c, i) => `<div class="wl-item"><span>${this.escape(c)}</span><button data-i="${i}" title="Remove">×</button></div>`).join('')
-      : '<div class="hint">No excluded channels.</div>';
+      ? list.map((c, i) => `<div class="whitelist-item"><span class="whitelist-item-name">${this.escape(c)}</span><button class="whitelist-item-remove" data-i="${i}">Remove</button></div>`).join('')
+      : '<div class="empty-state">No excluded channels.</div>';
     container.querySelectorAll('button[data-i]').forEach(btn => {
       btn.addEventListener('click', () => {
         const i = Number(btn.dataset.i);
@@ -269,12 +284,19 @@ class PopupManager {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  toast(msg) {
-    const t = this.$('toast');
-    t.textContent = msg;
-    t.classList.add('show');
-    clearTimeout(this._toastTimer);
-    this._toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+  toast(msg, type = 'info') {
+    const container = this.$('toast-container');
+    if (!container) return;
+    const el = document.createElement('div');
+    el.className = 'toast ' + type;
+    el.innerHTML = `<span class="toast-message">${this.escape(msg)}</span>`;
+    container.appendChild(el);
+    setTimeout(() => {
+      el.style.transition = 'opacity .2s, transform .2s';
+      el.style.opacity = '0';
+      el.style.transform = 'translateX(100%)';
+      setTimeout(() => el.remove(), 220);
+    }, 2400);
   }
 }
 
