@@ -77,6 +77,9 @@ class BackgroundService {
         case 'answerQuestion':
           await this.handleAnswerQuestion(data, sendResponse);
           break;
+        case 'translateTranscript':
+          await this.handleTranslateTranscript(data, sendResponse);
+          break;
         case 'healSelectors':
           await this.handleHealSelectors(data, sendResponse);
           break;
@@ -208,6 +211,50 @@ class BackgroundService {
     }
   }
 
+  /**
+   * Translate the full transcript into the target language (cached).
+   * data: { videoId, segments, lang }
+   */
+  async handleTranslateTranscript(data, sendResponse) {
+    try {
+      const { videoId = '', segments = [], lang = 'en' } = data || {};
+      if (!Array.isArray(segments) || segments.length === 0) {
+        sendResponse({ success: false, error: 'No transcript available' });
+        return;
+      }
+      const baseLang = this.normalizeLang(lang);
+      const cacheKey = `transcript_${videoId}_${baseLang}`;
+
+      const cached = await chrome.storage.local.get(cacheKey);
+      if (cached[cacheKey] && Array.isArray(cached[cacheKey].lines)) {
+        sendResponse({ success: true, lines: cached[cacheKey].lines, cached: true });
+        return;
+      }
+
+      if (!this.recapService) {
+        await this.loadAPIKey();
+        if (!this.recapService) {
+          sendResponse({ success: false, error: 'API key not configured. Please set your API key in the extension popup.' });
+          return;
+        }
+      }
+
+      const stored = await chrome.storage.local.get(['advancedSettings']);
+      const aiModel = (stored.advancedSettings && stored.advancedSettings.aiModel) || undefined;
+
+      const lines = await this.recapService.translateTranscript(segments, {
+        targetLanguage: this.languageName(baseLang),
+        aiModel
+      });
+
+      await chrome.storage.local.set({ [cacheKey]: { lines, createdAt: Date.now() } });
+      sendResponse({ success: true, lines, cached: false });
+    } catch (error) {
+      logger.error('Transcript translation failed', { error: error.message });
+      sendResponse({ success: false, error: error.message });
+    }
+  }
+
   async handleHealSelectors(data, sendResponse) {
     try {
       if (!this.recapService) {
@@ -295,10 +342,12 @@ class BackgroundService {
   async handleClearRecapCache(data, sendResponse) {
     try {
       const all = await chrome.storage.local.get(null);
+      const prefixes = [RECAP_PREFIX, 'transcript_'];
       const toRemove = Object.keys(all).filter(k => {
-        if (!k.startsWith(RECAP_PREFIX)) return false;
+        const pfx = prefixes.find(p => k.startsWith(p));
+        if (!pfx) return false;
         if (data && data.all) return true;
-        if (data && data.videoId) return k.startsWith(`${RECAP_PREFIX}${data.videoId}_`);
+        if (data && data.videoId) return k.startsWith(`${pfx}${data.videoId}_`);
         return false;
       });
       if (toRemove.length) await chrome.storage.local.remove(toRemove);
@@ -355,7 +404,7 @@ class BackgroundService {
     try {
       const all = await chrome.storage.local.get(null);
       const stale = Object.keys(all).filter(k =>
-        k.startsWith(RECAP_PREFIX) &&
+        (k.startsWith(RECAP_PREFIX) || k.startsWith('transcript_')) &&
         all[k] &&
         all[k].createdAt &&
         (Date.now() - all[k].createdAt) > MAX_AGE_MS

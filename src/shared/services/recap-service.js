@@ -177,6 +177,47 @@ Return a JSON object:
   }
 
   /**
+   * Translate a full transcript into the target language, preserving line
+   * alignment with the original timestamps. Translated in batches to stay within
+   * token limits; each batch asks for a JSON array of the SAME length.
+   * @param {Array<{time:number,text:string}>} segments
+   * @param {Object} opts - { targetLanguage, aiModel, batchSize }
+   * @returns {Promise<Array<{time:number,text:string}>>}
+   */
+  async translateTranscript(segments, opts = {}) {
+    const { targetLanguage = 'English', aiModel, batchSize = 80 } = opts;
+    if (!Array.isArray(segments) || segments.length === 0) return [];
+
+    const out = [];
+    for (let i = 0; i < segments.length; i += batchSize) {
+      const batch = segments.slice(i, i + batchSize);
+      const lines = batch.map(s => s.text);
+
+      const systemPrompt = `You are a professional subtitle translator. Translate each line into ${targetLanguage}, keeping the SAME number of lines and the SAME order. Do not merge, split, add or drop lines. Keep it natural and faithful. Return ONLY a JSON object: { "lines": ["<line1>", "<line2>", ...] } with exactly ${lines.length} strings.`;
+      const userMessage = `Translate these ${lines.length} lines to ${targetLanguage}:\n\n${JSON.stringify(lines)}`;
+
+      let translated = lines;
+      try {
+        const payload = this.provider.createPayload(systemPrompt, userMessage, aiModel);
+        const response = await this.provider.sendRequest(payload);
+        const parsed = this.provider.parseResponse(response) || {};
+        if (Array.isArray(parsed.lines) && parsed.lines.length === lines.length) {
+          translated = parsed.lines.map((t, k) => (typeof t === 'string' && t.trim() ? t.trim() : lines[k]));
+        } else {
+          this.logger.warn('Transcript batch length mismatch; keeping original', {
+            expected: lines.length, got: Array.isArray(parsed.lines) ? parsed.lines.length : 'n/a'
+          });
+        }
+      } catch (error) {
+        this.logger.warn('Transcript batch translation failed; keeping original', { error: error.message });
+      }
+
+      batch.forEach((s, k) => out.push({ time: s.time, text: translated[k] }));
+    }
+    return out;
+  }
+
+  /**
    * Normalize key points to a list of { text, start } objects. Accepts both the
    * new object shape { text, start } and legacy plain strings (older cached
    * recaps), in which case `start` is null (rendered without a jump chip).

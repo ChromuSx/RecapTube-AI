@@ -477,7 +477,17 @@ class RecapManager {
          </div>`
       : '';
 
-    body.innerHTML = summaryHtml + chaptersHtml + qaHtml;
+    const transcriptHtml = (this.lastTranscriptSegments && this.lastTranscriptSegments.length)
+      ? `<div class="rt-section rt-transcript">
+           <div class="rt-section-title">
+             Transcript
+             <button class="rt-btn rt-tr-toggle" style="margin-left:auto;font-size:12px;">Show ▾</button>
+           </div>
+           <div class="rt-tr-body" style="display:none;"></div>
+         </div>`
+      : '';
+
+    body.innerHTML = summaryHtml + chaptersHtml + qaHtml + transcriptHtml;
 
     const regenInline = body.querySelector('.rt-regen-inline');
     if (regenInline) {
@@ -493,6 +503,12 @@ class RecapManager {
       const submit = () => this.askQuestion(qaInput.value, body);
       qaSend.addEventListener('click', submit);
       qaInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+    }
+
+    // Transcript toggle wiring (lazy translate on first open)
+    const trToggle = body.querySelector('.rt-tr-toggle');
+    if (trToggle) {
+      trToggle.addEventListener('click', () => this.toggleTranscript(body));
     }
 
     // Wire chapter + key-point clicks (seek). Key points only carry a timestamp
@@ -566,6 +582,64 @@ class RecapManager {
       (cites ? `<div class="rt-qa-cites">${cites}</div>` : '');
     answerEl.querySelectorAll('.rt-kp-jump').forEach(el => {
       el.addEventListener('click', (e) => { e.stopPropagation(); this.seekTo(Number(el.dataset.start)); });
+    });
+  }
+
+  // ------------------------------------------------------- translated transcript
+  async toggleTranscript(body) {
+    const toggle = body.querySelector('.rt-tr-toggle');
+    const trBody = body.querySelector('.rt-tr-body');
+    if (!toggle || !trBody) return;
+
+    const isOpen = trBody.style.display !== 'none';
+    if (isOpen) {
+      trBody.style.display = 'none';
+      toggle.textContent = 'Show ▾';
+      return;
+    }
+
+    trBody.style.display = 'block';
+    toggle.textContent = 'Hide ▴';
+
+    // Render only once.
+    if (trBody.dataset.loaded === '1') return;
+
+    if (!this.lastTranscriptSegments || !this.lastTranscriptSegments.length) {
+      trBody.innerHTML = `<div class="rt-error">No transcript available.</div>`;
+      return;
+    }
+
+    trBody.innerHTML = `<div class="rt-loading"><span class="rt-spinner"></span> Translating transcript…</div>`;
+
+    const response = await this.sendMessage({
+      action: 'translateTranscript',
+      data: {
+        videoId: this.currentVideoId,
+        segments: this.lastTranscriptSegments,
+        lang: this.resolveLang()
+      }
+    });
+
+    if (!response || !response.success || !Array.isArray(response.lines)) {
+      trBody.innerHTML = `<div class="rt-error">${this.escape((response && response.error) || 'Translation failed')}</div>`;
+      return;
+    }
+
+    this.renderTranscript(trBody, response.lines);
+    trBody.dataset.loaded = '1';
+  }
+
+  renderTranscript(trBody, lines) {
+    const rows = lines.map(l => {
+      const t = Math.max(0, Math.floor(Number(l.time) || 0));
+      return `<div class="rt-tr-line" data-start="${t}">
+          <span class="rt-time">${this.formatTime(t)}</span>
+          <span class="rt-tr-text">${this.escape(l.text || '')}</span>
+        </div>`;
+    }).join('');
+    trBody.innerHTML = rows;
+    trBody.querySelectorAll('.rt-tr-line').forEach(row => {
+      row.addEventListener('click', () => this.seekTo(Number(row.dataset.start)));
     });
   }
 
@@ -825,6 +899,10 @@ html[dark] .${CSS_CLASSES.PANEL} .rt-head{background:#181818;border-color:#333;}
 .${CSS_CLASSES.PANEL} .rt-qa-answer{margin-top:8px;font-size:13px;line-height:1.5;}
 .${CSS_CLASSES.PANEL} .rt-qa-text{white-space:pre-wrap;}
 .${CSS_CLASSES.PANEL} .rt-qa-cites{margin-top:6px;display:flex;flex-wrap:wrap;gap:5px;}
+.${CSS_CLASSES.PANEL} .rt-tr-body{max-height:300px;overflow-y:auto;margin-top:6px;}
+.${CSS_CLASSES.PANEL} .rt-tr-line{display:flex;gap:8px;padding:3px 6px;border-radius:6px;cursor:pointer;align-items:baseline;}
+.${CSS_CLASSES.PANEL} .rt-tr-line:hover{background:rgba(127,127,127,.14);}
+.${CSS_CLASSES.PANEL} .rt-tr-text{flex:1;}
 .${CSS_CLASSES.PANEL} .rt-note{opacity:.75;font-style:italic;}
 .${CSS_CLASSES.PANEL} .rt-chapter{
   display:flex;align-items:baseline;gap:8px;padding:5px 6px;border-radius:8px;cursor:pointer;
