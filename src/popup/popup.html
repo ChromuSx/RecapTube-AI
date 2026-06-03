@@ -40,9 +40,12 @@
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
+    /* Kit convention: 1rem = 10px, so the rem-based sizes render as intended. */
+    html { font-size: 62.5%; }
     body {
       width: 380px; min-height: 600px; font-family: var(--vp-font);
       background: var(--vp-bg); color: var(--vp-text);
+      font-size: 1.4rem;
       overflow-x: hidden; -webkit-font-smoothing: antialiased; line-height: 1.4;
       transition: background .2s, color .2s;
     }
@@ -132,6 +135,17 @@
     .whitelist-item-remove { background: var(--vp-chip); color: var(--vp-text); border: none; padding: 6px 12px; border-radius: var(--vp-radius-pill); font-size: 1.2rem; cursor: pointer; font-family: var(--vp-font); }
     .whitelist-item-remove:hover { background: var(--vp-chip-hover); }
     .empty-state { text-align: center; padding: 16px; color: var(--vp-text2); font-size: 1.3rem; }
+
+    /* Support cards */
+    .support-intro { padding: 0 16px 12px; font-size: 1.3rem; color: var(--vp-text2); line-height: 1.6; }
+    .support-list { display: flex; flex-direction: column; gap: 8px; padding: 0 16px; }
+    .support-card { display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--vp-bg-b); border: 1px solid var(--vp-outline); border-radius: var(--vp-radius-sm); text-decoration: none; transition: background .15s; cursor: pointer; }
+    .support-card:hover { background: var(--vp-chip); }
+    .support-emoji { font-size: 22px; flex-shrink: 0; }
+    .support-text { flex: 1; }
+    .support-title { font-size: 1.4rem; font-weight: 500; color: var(--vp-text); }
+    .support-sub { font-size: 1.2rem; color: var(--vp-text2); }
+    .support-arrow { font-size: 20px; color: var(--vp-text2); }
 
     /* Toast */
     .toast-container { position: fixed; top: 16px; right: 16px; z-index: 2000; display: flex; flex-direction: column; gap: 10px; }
@@ -291,6 +305,34 @@
         <button class="btn primary flex" id="regen">Regenerate</button>
         <button class="btn flex" id="clear-current">Clear video</button>
         <button class="btn flex" id="clear-all">Clear all</button>
+      </div>
+    </div>
+
+    <!-- Support -->
+    <div class="settings">
+      <h2><span class="material-icons" style="font-size:14px;">favorite</span> Support the Project</h2>
+      <p class="support-intro">RecapTube AI is free and open source. If you find it useful, consider supporting its development!</p>
+      <div class="support-list">
+        <a class="support-card" href="https://github.com/sponsors/ChromuSx" target="_blank">
+          <span class="support-emoji">💖</span>
+          <div class="support-text"><div class="support-title">GitHub Sponsors</div><div class="support-sub">Support on GitHub</div></div>
+          <span class="material-icons support-arrow">arrow_forward</span>
+        </a>
+        <a class="support-card" href="https://ko-fi.com/chromus" target="_blank">
+          <span class="support-emoji">☕</span>
+          <div class="support-text"><div class="support-title">Ko-fi</div><div class="support-sub">Buy me a coffee</div></div>
+          <span class="material-icons support-arrow">arrow_forward</span>
+        </a>
+        <a class="support-card" href="https://buymeacoffee.com/chromus" target="_blank">
+          <span class="support-emoji">🎉</span>
+          <div class="support-text"><div class="support-title">Buy Me a Coffee</div><div class="support-sub">One-time support</div></div>
+          <span class="material-icons support-arrow">arrow_forward</span>
+        </a>
+        <a class="support-card" href="https://www.paypal.com/paypalme/giovanniguarino1999" target="_blank">
+          <span class="support-emoji">💳</span>
+          <div class="support-text"><div class="support-title">PayPal</div><div class="support-sub">Donate via PayPal</div></div>
+          <span class="material-icons support-arrow">arrow_forward</span>
+        </a>
       </div>
     </div>
 
