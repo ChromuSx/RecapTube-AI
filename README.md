@@ -1,4 +1,4 @@
-# RecapTubeAI
+# 📝 RecapTubeAI
 
 <div align="center">
 
@@ -6,9 +6,9 @@
 
 **AI-powered Chrome extension that summarizes any YouTube video, translates the summary into your language, and auto-generates topic chapters — straight from the transcript.**
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](#)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Chrome Web Store](https://img.shields.io/badge/Chrome-Web%20Store-orange.svg)](https://chrome.google.com/webstore)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue?style=for-the-badge)](#)
+[![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
+[![Chrome Web Store](https://img.shields.io/badge/Chrome-Web%20Store-orange?style=for-the-badge)](https://chrome.google.com/webstore)
 
 <p align="center">
   <a href="https://github.com/sponsors/ChromuSx"><img src="https://img.shields.io/badge/Sponsor-GitHub-EA4AAA?style=for-the-badge&logo=github-sponsors&logoColor=white" alt="GitHub Sponsors"></a>
@@ -158,12 +158,21 @@ tokens** (color values, spacing, radii, type scale) and the **Roboto** font
 trademarks, logos or proprietary fonts of any platform are used. The per-product
 accent (RecapTube: blue `#3ea6ff`) keeps it distinct.
 
+## 💖 Support the Project
+
+This project is free and open source. If you find it useful, consider supporting its development — every contribution helps and is genuinely appreciated! ❤️
+
+<p align="center">
+  <a href="https://github.com/sponsors/ChromuSx"><img src="https://img.shields.io/badge/Sponsor-GitHub-EA4AAA?style=for-the-badge&logo=github-sponsors&logoColor=white" alt="GitHub Sponsors"></a>
+  <a href="https://ko-fi.com/chromus"><img src="https://img.shields.io/badge/Support-Ko--fi-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Ko-fi"></a>
+  <a href="https://buymeacoffee.com/chromus"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black" alt="Buy Me a Coffee"></a>
+  <a href="https://www.paypal.com/paypalme/giovanniguarino1999"><img src="https://img.shields.io/badge/Donate-PayPal-00457C?style=for-the-badge&logo=paypal&logoColor=white" alt="PayPal"></a>
+</p>
+
 ## 📝 License
 
 MIT — see [LICENSE](LICENSE).
 
 <div align="center">
-
-**Made with ❤️ by Giovanni Guarino**
-
+  <sub>Made with ❤️ by <a href="https://github.com/ChromuSx">Giovanni Guarino</a></sub>
 </div>
