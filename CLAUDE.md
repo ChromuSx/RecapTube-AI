@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-RecapTube AI is a Chrome extension (Manifest V3) that uses AI to **summarize** YouTube videos, **translate** the summary into the viewer's language, and **auto-generate topic chapters** when the creator didn't add any. It extracts the video transcript, sends it to Claude/OpenAI in a single call, renders the result in an in-page panel next to the video, and draws chapter markers on the progress bar. Results are cached locally per video and language.
+RecapTubeAI is a Chrome extension (Manifest V3) that uses AI to **summarize** YouTube videos, **translate** the summary into the viewer's language, and **auto-generate topic chapters** when the creator didn't add any. It extracts the video transcript, sends it to Claude/OpenAI in a single call, renders the result in an in-page panel next to the video, and draws chapter markers on the progress bar. Results are cached locally per video and language.
 
 It is a **sibling of SkipTube AI** (`../SkipTubeAI`) and reuses its transcript-extraction and provider architecture. The two extensions are designed to coexist on the same page (see "Cross-extension coexistence").
 

@@ -1,6 +1,6 @@
-UNDERSTAND ANY YOUTUBE VIDEO IN SECONDS WITH RECAPTUBE AI!
+UNDERSTAND ANY YOUTUBE VIDEO IN SECONDS WITH RECAPTUBE!
 
-Don't have time to watch a 40-minute video? RecapTube AI reads the video's transcript and instantly gives you a clear summary — in YOUR language — plus auto-generated chapters so you can jump straight to what matters. Powered by your choice of Claude (Anthropic) or OpenAI GPT.
+Don't have time to watch a 40-minute video? RecapTubeAI reads the video's transcript and instantly gives you a clear summary — in YOUR language — plus auto-generated chapters so you can jump straight to what matters. Powered by your choice of Claude (Anthropic) or OpenAI GPT.
 
 
 🚀 KEY FEATURES
@@ -121,7 +121,7 @@ A: No. Work happens in the background and cached videos load instantly.
 
 ---
 
-Note: This extension is independent and not affiliated with YouTube, Google, Anthropic, or OpenAI. RecapTube AI is an open source project created to help you get the gist of any YouTube video fast.
+Note: This extension is independent and not affiliated with YouTube, Google, Anthropic, or OpenAI. RecapTubeAI is an open source project created to help you get the gist of any YouTube video fast.
 
 Developer: Giovanni Guarino
 License: MIT (Open Source)

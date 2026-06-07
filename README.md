@@ -1,8 +1,8 @@
-# RecapTube AI
+# RecapTubeAI
 
 <div align="center">
 
-<img src="src/icons/icon128.png" alt="RecapTube AI Logo" width="128">
+<img src="src/icons/icon128.png" alt="RecapTubeAI Logo" width="128">
 
 **AI-powered Chrome extension that summarizes any YouTube video, translates the summary into your language, and auto-generates topic chapters — straight from the transcript.**
 
@@ -139,7 +139,7 @@ Models live in `config.js` (Claude `haiku`/`sonnet`; OpenAI `gpt-5.5`/`gpt-5.4-m
 
 ## 🤝 A sibling project
 
-RecapTube AI shares its architecture with **SkipTube AI** (the AI sponsor-skipper). Both can run on the same page: RecapTube uses a distinct interceptor contract (`RT_*` vs `YSS_*`) and `rt-`/`yss-` DOM prefixes so they never collide.
+RecapTubeAI shares its architecture with **SkipTube AI** (the AI sponsor-skipper). Both can run on the same page: RecapTube uses a distinct interceptor contract (`RT_*` vs `YSS_*`) and `rt-`/`yss-` DOM prefixes so they never collide.
 
 ---
 

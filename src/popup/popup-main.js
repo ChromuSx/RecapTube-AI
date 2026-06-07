@@ -1,4 +1,4 @@
-// popup-main.js - RecapTube AI settings popup
+// popup-main.js - RecapTubeAI settings popup
 import { CONFIG } from '../shared/config.js';
 import { STORAGE_KEYS } from '../shared/constants.js';
 

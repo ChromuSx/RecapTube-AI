@@ -1,4 +1,4 @@
-// content-main.js - RecapTube AI content script (ISOLATED world)
+// content-main.js - RecapTubeAI content script (ISOLATED world)
 //
 // Orchestrates: video detection (SPA navigation), transcript extraction (reused 3-layer
 // TranscriptService), native-chapter detection, the AI recap request to the background,
@@ -346,7 +346,7 @@ class RecapManager {
     panel.className = CSS_CLASSES.PANEL;
     panel.innerHTML = `
       <div class="rt-head">
-        <span class="rt-brand"><span class="rt-brand-mark">▶</span> RecapTube AI</span>
+        <span class="rt-brand"><span class="rt-brand-mark">▶</span> RecapTubeAI</span>
         <span class="rt-lang"></span>
         <span class="rt-head-actions">
           <button class="rt-btn rt-copy" title="Copy recap">⧉</button>

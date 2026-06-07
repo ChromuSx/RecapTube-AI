@@ -1,10 +1,10 @@
-# Privacy Policy for RecapTube AI
+# Privacy Policy for RecapTubeAI
 
 **Last Updated:** June 1, 2026
 
 ## Introduction
 
-RecapTube AI ("the Extension") is a Chrome browser extension that uses artificial intelligence to summarize YouTube videos, translate the summary into your language, and generate topic chapters from the video transcript. This Privacy Policy explains what information the Extension handles and how.
+RecapTubeAI ("the Extension") is a Chrome browser extension that uses artificial intelligence to summarize YouTube videos, translate the summary into your language, and generate topic chapters from the video transcript. This Privacy Policy explains what information the Extension handles and how.
 
 ## Information We Collect
 
@@ -128,7 +128,7 @@ We may update this policy; changes are reflected by the "Last Updated" date. Con
 - **Email:** giovanni.guarino1999@gmail.com
 
 ## Consent
-By installing and using RecapTube AI, you consent to this Privacy Policy.
+By installing and using RecapTubeAI, you consent to this Privacy Policy.
 
 ## Summary (TL;DR)
 - ✅ All your data stored locally on your device

@@ -1,4 +1,4 @@
-// background-main.js - Service Worker entry point (RecapTube AI)
+// background-main.js - Service Worker entry point (RecapTubeAI)
 import { CONFIG } from '../shared/config.js';
 import { RecapService } from '../shared/services/recap-service.js';
 import { Transcript } from '../shared/models/transcript.js';
